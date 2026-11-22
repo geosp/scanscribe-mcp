@@ -50,7 +50,7 @@ it.
   commands match the compose file.
 - [ ] 2.2 Update the architecture diagram in `docs/ARCHITECTURE.md` with the container, the two
   volumes and the GPU. Verify: the Mermaid block renders on GitHub.
-- [ ] 2.3 Add the Docker interface to `docs/decision-log.md` (image, port 8302, volumes) and
+- [x] 2.3 Add the Docker interface to `docs/decision-log.md` (image, port 8302, volumes) and
   leave the AGENTS.md Status line for `impl-plan close` to update. Verify: the decision log lists
   them; `uv run .agents/sync_agents.py --check` passes.
 
