@@ -92,7 +92,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
 
 ### 5. Documentation
 
-- [ ] 5.1 Add the HTTP part to the README (running with `--mode http`, the token, uploads, routes,
+- [x] 5.1 Add the HTTP part to the README (running with `--mode http`, the token, uploads, routes,
   all limits) and the uploads, storage and security-model sections to `docs/ARCHITECTURE.md`,
   each attack mapped to its defence as in pandoc-mcp; add the upload tools, the routes and the
   phase 02 variables to `docs/decision-log.md`. Verify: every `SCANSCRIBE_MCP_*` variable in
