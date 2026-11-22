@@ -157,7 +157,8 @@ async def test_full_queue_is_refused(make_client: MakeClient, tmp_path: Path) ->
     factory = FakeEngineFactory(on_load=lambda: release.wait(10) and None)
     client = await make_client(factory, max_queued=2)
     try:
-        await start(client, input_path=str(folder))  # running, held in the engine load
+        first = await start(client, input_path=str(folder))
+        await wait_state(client, first, "running")  # held in the engine load
         await wait_state(client, await start(client, input_path=str(folder)), "queued")
         await start(client, input_path=str(folder))
         with pytest.raises(ToolError, match="queue is full"):
@@ -421,6 +422,7 @@ async def test_result_of_an_unfinished_job(make_client: MakeClient, tmp_path: Pa
     client = await make_client(FakeEngineFactory(on_load=lambda: release.wait(10) and None))
     try:
         job_id = await start(client, input_path=str(folder))
+        await wait_state(client, job_id, "running")
         with pytest.raises(ToolError, match="has no result: it is running"):
             await client.call_tool("get_ocr_result", {"job_id": job_id})
     finally:
