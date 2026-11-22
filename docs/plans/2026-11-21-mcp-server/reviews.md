@@ -237,3 +237,8 @@ Fixes in e727b93, owner-approved (M1; N1-N4, N6-N8; N5 accepted). Each test fail
 
 ## 2026-11-22 · done · phase 03
 Gate passed: 9/9 tasks, impl review passed (round 1). Checks from a clean clone of a217cf7: ruff, format, mypy, 274 tests, agent sync, gitleaks, links. Manual check: docs/demos/2026-11-22-docker-gpu-check/README.md. Every phase is done; the plan is implemented.
+
+## 2026-11-22 · ADR review
+ADRs in force before this review: none.
+Created, each confirmed by the owner: ADR-0001 one OCR worker per process with an injected engine (D2, D3, D10, R28); ADR-0002 the HTTP security model (D6, D7, D8); ADR-0003 Docker on `python:3.12-slim` with the GPU wheels (D9); ADR-0004 pandoc-mcp's layout on mcp-service-kit (D1).
+Not recorded as ADRs: D4, D5, D11 and D12 are tactical; the Mermaid rule is in `docs/decision-log.md` and `AGENTS.md`.
