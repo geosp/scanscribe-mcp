@@ -28,6 +28,8 @@ data/
 # Agent tooling: local, per-user settings and session data
 .claude/settings.local.json
 .claude/*.local.*
+# A local MCP registration (e.g. for Claude Code in an editor): it holds a machine path
+.mcp.json
 
 # Editors / OS
 .idea/
