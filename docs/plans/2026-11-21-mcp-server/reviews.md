@@ -172,17 +172,19 @@ Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-02-round-0
 
 | ID | Sev | Lens | Finding | Resolution |
 | --- | --- | --- | --- | --- |
-| M1 | Major | contract | A body cut off before its closing boundary is stored as a whole file: python-multipart's `finalize()` is a no-op (R15, R29, task 3.2) | open |
-| M2 | Major | contract | An upload whose part headers haven't arrived isn't counted as in progress, so a job can start and close the link, and the late file is stored on the closed link outside the job (R29, D7) | open |
-| M3 | Major | contract | Part header bytes count against no limit; a chunked request skips the declared-length check (R16) | open |
-| M4 | Major | contract | The log line "result stored as document <id>" plus the job id rebuilds the token-free download URL (D8, R22) | open |
-| M5 | Major | contract | Over HTTP the `output_path` error doesn't name upload links, as R2's Then says | open |
-| N1 | Nit | contract | `safe_filename`'s 120-character cut can drop the extension, so a long-named page is skipped silently | open |
-| N2 | Nit | contract | Zip entries are written under raw base names, not through `safe_filename` (D8) | open |
-| N3 | Nit | contract | If `store.begin` raises after `links.begin`, `in_progress` is never given back and the OSError reaches uvicorn | open |
-| N4 | Nit | contract | `count_zip_pages` ignores `max_pages` and counts non-image entries, so the start-time message can mislead | open |
-| N5 | Nit | contract | A document at the retention age can be purged between `store.get` and `submit`; the job then fails at run time | open |
-| N6 | Nit | contract | Zip extraction runs inside the timed `checking pages` step; a slow 2 GB unpack could trip the watchdog | open |
-| N7 | Nit | contract | `scrub` replaces the relative "data/work" anywhere in an error, including the caller's own names | open |
-| N8 | Nit | contract | The declared-length 413 is tested only with `max_files=1`, not at R16's defaults | open |
-| N9 | Nit | contract | ARCHITECTURE.md says the start and the upload route "never interleave"; untrue at await points | open |
+| M1 | Major | contract | A body cut off before its closing boundary is stored as a whole file: python-multipart's `finalize()` is a no-op (R15, R29, task 3.2) | fixed: `on_end` and per-part `ended` in `UploadReceiver` (uploads.py); test_upload_routes.py::test_a_body_cut_before_its_closing_boundary_stores_nothing |
+| M2 | Major | contract | An upload whose part headers haven't arrived isn't counted as in progress, so a job can start and close the link, and the late file is stored on the closed link outside the job (R29, D7) | fixed: the route counts each request (`Grant.requests`) from entry and `start_ocr_job` refuses while one is open; parts and the commit refuse a closed link (uploads.py, service.py, ocr_service.py); test_upload_jobs.py::test_a_start_during_a_real_upload_is_refused_and_the_upload_lands, ::test_no_file_is_stored_on_a_link_closed_mid_request |
+| M3 | Major | contract | Part header bytes count against no limit; a chunked request skips the declared-length check (R16) | fixed: part headers and other fields share the 64 KiB `FIELD_LIMIT` per request (uploads.py). One huge header was already refused by python-multipart (8 lines of 4,224 bytes per part); the unbounded case was endless empty field parts; test_upload_routes.py::test_header_and_part_counts_are_limited |
+| M4 | Major | contract | The log line "result stored as document <id>" plus the job id rebuilds the token-free download URL (D8, R22) | fixed: the log line names the job and size, not the document id (ocr_service.py); test_http_logs.py forbids the id |
+| M5 | Major | contract | Over HTTP the `output_path` error doesn't name upload links, as R2's Then says | fixed: the message names the download URL and upload links (ocr_service.py); test_http_auth.py::test_local_paths_refused_over_http_even_when_allowed |
+| N1 | Nit | contract | `safe_filename`'s 120-character cut can drop the extension, so a long-named page is skipped silently | fixed: `safe_filename` cuts before the suffix (documents.py); test_documents.py::test_a_long_name_keeps_its_extension |
+| N2 | Nit | contract | Zip entries are written under raw base names, not through `safe_filename` (D8) | fixed: `page_name` puts zip entries through `safe_filename`, duplicates checked after (uploads.py); test_zips.py::test_zip_entries_get_plain_names, ::test_names_equal_after_cleaning_are_duplicates |
+| N3 | Nit | contract | If `store.begin` raises after `links.begin`, `in_progress` is never given back and the OSError reaches uvicorn | fixed: the document is made before the link counts the part; the route answers 500 and logs the class only (uploads.py, service.py); test_upload_routes.py::test_a_store_error_gives_back_the_upload_and_hides_its_text |
+| N4 | Nit | contract | `count_zip_pages` ignores `max_pages` and counts non-image entries, so the start-time message can mislead | fixed: `count_zip_pages` applies every `zip_pages` rule but the page limit (uploads.py); test_zips.py::test_a_non_image_entry_is_named_at_start |
+| N5 | Nit | contract | A document at the retention age can be purged between `store.get` and `submit`; the job then fails at run time | accepted: a tiny window, only for a document at the retention age; the job then fails cleanly at run time |
+| N6 | Nit | contract | Zip extraction runs inside the timed `checking pages` step; a slow 2 GB unpack could trip the watchdog | accepted: R28 times the `checking pages` step, which includes the unpack; 600 s is ample for 2 GB |
+| N7 | Nit | contract | `scrub` replaces the relative "data/work" anywhere in an error, including the caller's own names | fixed: `scrub` uses absolute spellings only (ocr_service.py); test_http_messages.py::test_scrub_leaves_the_callers_own_names_alone |
+| N8 | Nit | contract | The declared-length 413 is tested only with `max_files=1`, not at R16's defaults | fixed: test only, the behaviour was right; test_upload_routes.py::test_a_250_mb_file_answers_413_at_the_default_limits |
+| N9 | Nit | contract | ARCHITECTURE.md says the start and the upload route "never interleave"; untrue at await points | fixed: docs/ARCHITECTURE.md now says the two interleave and how the route guards it |
+
+Fixes in 9f9df6c, owner-approved (all Majors; N1-N4, N7-N9; N5 and N6 accepted). Each test failed before its fix and fails again when the fix is reverted.

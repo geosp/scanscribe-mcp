@@ -1,12 +1,12 @@
 ---
 phase: 2
 title: HTTP, token, uploads and the document store
-status: in-progress
+status: impl-reviewed
 branch: feat/5-http-uploads-store
 base: 872ec10bba4784363a1b1802fd3bd3fdf591b36e
 delivers: [R2, R15, R16, R17, R18, R19, R20, R22, R23, R28, R29]
 design_review: { status: passed, rounds: 3, last: 2026-11-21 }
-impl_review: { status: changes-requested, rounds: 1, last: 2026-11-21 }
+impl_review: { status: passed, rounds: 1, last: 2026-11-21 }
 approved: 2026-11-21
 ---
 
