@@ -3,7 +3,7 @@ title: A working scanscribe MCP server
 status: in-progress
 created: 2026-11-21
 updated: 2026-11-21
-design_review: { status: passed, rounds: 2, last: 2026-11-21 }
+design_review: { status: changes-requested, rounds: 2, last: 2026-11-21 }
 approved: 2026-11-21
 adr_review: null
 ---
@@ -271,10 +271,11 @@ job's dpi must fail the job before the pre-check.
 
 ### R28 · A hung page doesn't block the server for ever
 
-A page that takes longer than `SCANSCRIBE_MCP_PAGE_TIMEOUT_S` (default 600 s) must fail its job.
-Over HTTP the process then exits, so its supervisor restarts it; over stdio new jobs are refused
-with a message asking for a restart.
-- **Given** a fake engine that blocks on page 2 past the timeout, **when** the watchdog fires, **then** the job is `failed` naming the timeout, and the server exits (HTTP) or refuses new jobs (stdio).
+A page that takes longer than `SCANSCRIBE_MCP_PAGE_TIMEOUT_S` (default 600 s) must fail its job,
+and the jobs still queued fail with a message asking for a restart, because the stuck worker
+would never run them. Over HTTP the process then exits, so its supervisor restarts it; over stdio
+new jobs are refused with a message asking for a restart.
+- **Given** a fake engine that blocks on page 2 past the timeout, **when** the watchdog fires, **then** the job is `failed` naming the timeout, any queued job is `failed` asking for a restart, and the server exits (HTTP) or refuses new jobs (stdio).
 
 ### R29 · Uploads are complete and uniquely named before a job starts
 
@@ -298,7 +299,7 @@ would break with the pattern the owner maintains in pandoc-mcp). Details: notes.
 A single daemon thread takes jobs from a `queue.Queue`, so OCR never runs twice at once (R5) and
 never blocks the event loop. The job table, under a lock, holds each job's state; R6 counts its
 `queued` jobs after expiry, and the worker skips cancelled or expired entries. A watchdog thread
-checks the current page's age for R28. Each job runs inside a catch-all (R26).
+checks the current page's age for R28; when it fires, it also fails the queued jobs. Each job runs inside a catch-all (R26).
 Rejected: `asyncio.to_thread` per job (needs its own lock to serialize); a process pool (a second
 engine and GPU context per process).
 
@@ -357,12 +358,18 @@ GPU, sets a memory limit and a healthcheck, and mounts `documents` at `/data` an
 `/cache`. Rejected: an `nvidia/cuda` base (larger, and the wheels carry CUDA); a CPU image build
 argument (no stated need). Details: notes.md#d9
 
-### D10 · stdout safety relies on the transport, and a test checks it
+### D10 · stdout safety: the transport, a per-job redirect, and a test
 
 While serving, fastmcp's stdio transport writes the protocol to its own copy of the original
-stdout and points file descriptor 1 at stderr. So anything else that writes to stdout, including
-the engine's swap of `sys.stdout`, lands on stderr. The server logs only to stderr. Task 01/4.2
-checks it end to end (R21). Rejected: our own redirection. Details: notes.md#d10
+stdout and points file descriptor 1 at stderr, so a write to descriptor 1 lands on stderr. That
+doesn't cover Python's `sys.stdout` buffer: an unflushed `print()` is written when the buffer
+is flushed, at the latest at exit, after the transport has pointed descriptor 1 back at the wire.
+So the worker also runs each job inside `contextlib.redirect_stdout(sys.stderr)`, as
+scanscribe's engine does around each call. That is safe because the transport took its copy of
+stdout when it started, and a job only starts from a tool call. The server logs only to stderr.
+Task 01/4.2 checks it end to end (R21). Rejected: relying on the transport alone (task 01/4.2
+showed buffered prints reaching the wire at shutdown); swapping `sys.stdout` before the transport
+starts (the transport would then serve the protocol on stderr). Details: notes.md#d10
 
 ### D11 · Error messages are rewritten before they leave the worker
 
@@ -389,6 +396,9 @@ emptying the folder (it could delete files that aren't ours); no clean-up (crash
 - Jobs and upload links live in memory; a restart forgets them, and agents start again.
 - Finished jobs stay listed for `SCANSCRIBE_MCP_JOB_RETENTION_S` (default 24 h).
 - `wait_s` polling every 0.5 s is cheap enough, as `check_upload` does in pandoc-mcp.
+- `get_ocr_result` with `output_path` writes the whole text, so it refuses `first_page` and
+  `last_page` alongside it. A slice whose first page alone exceeds `MAX_INLINE_CHARS` returns no
+  text and says so; an OCR'd page is far shorter than the 50,000-character default.
 
 ## Risks
 
@@ -447,4 +457,9 @@ unwanted.
 | 03 | Docker on the GPU and the manual GPU check (R25) | approved | 0/8 |
 
 ## Decision log
+
+- 2026-11-21 · D10 changed during phase 01's apply: task 4.2's test showed that buffered prints
+  reach stdout at shutdown, so the worker now redirects `sys.stdout` to stderr for each job.
+  R28 and D2: queued jobs fail when the watchdog fires. Assumptions: `output_path` with a page
+  range, and a page longer than the inline limit. Owner's decision; design review round 3 due.
 

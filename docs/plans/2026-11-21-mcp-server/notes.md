@@ -47,7 +47,7 @@ Read on 2026-11-21 at pandoc-mcp `cbe8023` and mcp-service-kit `v0.2.1`.
 | `documents.py` `DocumentStore`, `safe_filename` | same | MIME table reduced to text, PDF, images, zip |
 | `uploads.py` `UploadLinks`, `Grant` | same | `max_files` up to 200; total bytes per grant (R16) |
 | `results.py` `tool_errors()` | same | maps `scanscribe.UsageError` / `InputError` and strips server paths (R23) |
-| `config.py` `AppConfig` + `PandocConfig` | `AppConfig` + `ScanscribeMcpConfig` | `local_paths_allowed` kept as is |
+| `config.py` `AppConfig` + `PandocConfig` | `AppConfig` + `ScanscribeMcpConfig` | `local_paths_allowed`: stdio only, never HTTP (R2) |
 
 pandoc-mcp pins kit v0.1.0. Since v0.2.0 the kit refuses to start HTTP when
 `create_auth_provider()` returns `None` and auth is on, which is what R19 wants. v0.2.1 lets
@@ -152,7 +152,17 @@ fastmcp 4.2.4 (the version the kit's `fastmcp>=4.1.3` resolves to today) serves 
 device and fd 1 at stderr, so handlers and children read EOF and their stray output misses the
 wire." It writes the protocol through its own wrapper of the original descriptor, so
 `contextlib.redirect_stdout(sys.stderr)` inside scanscribe's engine only changes the Python
-object, never the wire. The worker thread is a plain thread of the same process, so this covers
-it too. The protection starts when the transport starts: a `print()` at import or in `main()`
-before `run()` would still reach the wire, which is what task 01/4.2's failing case injects.
+object, never the wire. The protection starts when the transport starts: a `print()` at import or
+in `main()` before `run()` would still reach the wire, which is what task 01/4.2's failing case
+injects.
+
+What the transport doesn't cover (found by task 01/4.2 on 2026-11-21): a `print()` to the
+original `sys.stdout` goes into Python's buffer, not straight to descriptor 1. Unless something
+flushes it while descriptor 1 points at stderr, it is written at exit, after the transport has
+restored descriptor 1, so it lands on the wire after the last MCP message. The probe showed
+`fake engine stray output, page 1` and `page 2` on stdout after the four JSON-RPC replies, and
+nothing on stderr. Hence D10's per-job `redirect_stdout(sys.stderr)` in the worker: the
+transport only reads `sys.stdout` when it starts (`_claim_fd` checks that it is backed by
+descriptor 1), and jobs start only from a tool call, so the swap never reaches the wire. The
+swap is process-wide; the event loop's code never prints, and logs go to stderr anyway.
 `fastmcp>=4.2.4` becomes a direct dependency so a re-resolve can't drop below the version read. The subprocess test in phase 01 checks this end to end with a fake engine that prints.
