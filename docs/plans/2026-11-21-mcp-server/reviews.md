@@ -212,3 +212,6 @@ No round 1 finding came back.
 | N21 | Nit | contract | The in-progress refusal test doesn't assert the link is still open right after the refusal | fixed: test_upload_jobs.py asserts the link is open after the refusal |
 
 Fixes in 932fb34, owner-approved (F1; N10, N12-N15, N17, N18, N21; N11, N16, N20 accepted). Each code fix's test fails when the fix is reverted; N10, N12-N14 and N21 added coverage for behaviour that was already right. Review rounds stop here, as the impl-review skill says.
+
+## 2026-11-21 · done · phase 02
+Gate passed: 15/15 tasks, impl review passed (round 2). Checks from a clean clone of 4e7c493: ruff, format, mypy, 262 tests, agent sync, gitleaks. No manual-check record: task 5.3 became an automated curl test (owner's decision, plan Decision log).
