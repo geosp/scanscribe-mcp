@@ -194,6 +194,21 @@ jobs:
           allow-licenses: >-
             Apache-2.0, MIT, MIT-0, BSD-2-Clause, BSD-3-Clause, ISC, PSF-2.0, Python-2.0,
             MPL-2.0, Unlicense, 0BSD, CC0-1.0, Zlib, MIT-CMU
+          # Exempt by name, not by licence (owner's decision, docs/decision-log.md 2026-11-21).
+          # pypdfium2 is in the base install: it bundles data files under CC-BY-4.0. The rest
+          # come only with the `gpu`/`cpu` extras (PaddlePaddle, PaddleOCR and NVIDIA's CUDA
+          # wheels): proprietary, unknown or mixed (GPL/LGPL) licences. Review this list when
+          # the extras change.
+          allow-dependencies-licenses: >-
+            pkg:pypi/pypdfium2,
+            pkg:pypi/aiohappyeyeballs, pkg:pypi/aistudio-sdk, pkg:pypi/crc32c,
+            pkg:pypi/protobuf, pkg:pypi/pyclipper, pkg:pypi/python-bidi, pkg:pypi/ujson,
+            pkg:pypi/wcwidth,
+            pkg:pypi/nvidia-cublas-cu12, pkg:pypi/nvidia-cuda-nvrtc-cu12,
+            pkg:pypi/nvidia-cudnn-cu12, pkg:pypi/nvidia-cufft-cu12, pkg:pypi/nvidia-cufile-cu12,
+            pkg:pypi/nvidia-curand-cu12, pkg:pypi/nvidia-cusolver-cu12,
+            pkg:pypi/nvidia-cusparse-cu12, pkg:pypi/nvidia-cusparselt-cu12,
+            pkg:pypi/nvidia-nccl-cu12, pkg:pypi/nvidia-nvtx-cu12
 
 
   # Every job must succeed; a skipped job fails the gate. The only exception is a
