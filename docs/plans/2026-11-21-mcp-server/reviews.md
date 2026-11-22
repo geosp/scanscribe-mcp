@@ -188,3 +188,25 @@ Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-02-round-0
 | N9 | Nit | contract | ARCHITECTURE.md says the start and the upload route "never interleave"; untrue at await points | fixed: docs/ARCHITECTURE.md now says the two interleave and how the route guards it |
 
 Fixes in 9f9df6c, owner-approved (all Majors; N1-N4, N7-N9; N5 and N6 accepted). Each test failed before its fix and fails again when the fix is reverted.
+
+## 2026-11-21 · impl-review · phase 02 · round 2 · changes-requested
+Diff base: 872ec10 · reviewed commit: beb0ef1 · profile `small` (contract lens), owner-requested after round 1's Majors were fixed
+Reviewers: contract ✅
+Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-02-round-02-contract.md` (saved by `save-report`). Correction to round 1's note: a hand-back report saves fine, so round 1's refusals were most likely the coordinator's snippets, not the hand-back.
+No round 1 finding came back.
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| F1 | Major | contract | An upload named `meta.json` (or `../meta.json`) collides with the store's metadata file; `get()` then finds no file and every start on that link is refused as "no longer stored" (D7, R29) | open |
+| N10 | Nit | contract | R17's test accepts a refusal at start or a failure at run time; neither is pinned, and the link staying open after a zip refusal isn't checked | open |
+| N11 | Nit | contract | Defaults are 200 MiB and 2 GiB where the plan says 200 MB and 2 GB | open |
+| N12 | Nit | contract | The purge test sees the hourly purge only while a job runs; "while idle" is never observed | open |
+| N13 | Nit | contract | The copy fallback when `os.link` fails is never exercised | open |
+| N14 | Nit | contract | Natural order inside a zip (with `p10`) is tested only in the curl test, which is skipped without curl | open |
+| N15 | Nit | contract | `document=` doesn't honour the `hidden` flag that `upload_id` skips | open |
+| N16 | Nit | contract | A `document=` start can race the purge thread's keep set for a document already past retention; the job then fails cleanly | open |
+| N17 | Nit | contract | If `commit` fails on the second file of a request, the first stays stored while the route answers 500 | open |
+| N18 | Nit | contract | The browser form sends one request per file, so a start between two files takes a partial snapshot and closes the link | open |
+| N19 | Nit | contract | Unpacking a zip is timed as part of `checking pages` (same as round 1's N6) | accepted: round 1, N6 |
+| N20 | Nit | contract | `public_message` may miss a job-folder path spelled through a symlinked working folder; `scrub` still hides it | open |
+| N21 | Nit | contract | The in-progress refusal test doesn't assert the link is still open right after the refusal | open |
