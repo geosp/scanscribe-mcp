@@ -384,7 +384,10 @@ class OcrService:
 
     def _process(self, job: Job) -> list[list[str]]:
         options = job.options
-        self._set(job, step=Step.CHECKING_PAGES)
+        # `page_started` times what the watchdog watches (R28): the checking step, then each
+        # page from when the job reaches it until the next page is ready. The engine load isn't
+        # timed: a first run downloads models.
+        self._set(job, step=Step.CHECKING_PAGES, page_started=self.clock())
         if job.input.path.is_file():
             self._check_pdf_page_sizes(job.input, options.dpi)
         with self._open_source(job.input.path, options.dpi, options.columns) as source:
@@ -392,10 +395,10 @@ class OcrService:
             if len(source) > self.config.max_pages:
                 raise JobError(self._too_many_pages(job.input.name, len(source)))
             logger.info("job %s: %d pages passed the pre-check", job.id, len(source))
-            self._set(job, step=Step.LOADING_ENGINE, total=len(source))
+            self._set(job, step=Step.LOADING_ENGINE, total=len(source), page_started=None)
             tracked = _TrackedEngine(self._engine_for(job))
             self._check_cancel(job)
-            self._set(job, step=Step.RECOGNIZING)
+            self._set(job, step=Step.RECOGNIZING, page_started=self.clock())
 
             def on_page(number: int, total: int) -> None:
                 self._check_cancel(job)
@@ -473,14 +476,20 @@ class OcrService:
             self.check_watchdog()
 
     def check_watchdog(self) -> bool:
-        """Fail the running job if its current page passed PAGE_TIMEOUT_S, and refuse new jobs
-        from then on (R28). Returns whether it fired."""
+        """Fail the running job if its current page, or its checking step, passed
+        PAGE_TIMEOUT_S, and refuse new jobs from then on (R28). Returns whether it fired."""
         job = self.table.running()
         timeout = self.config.page_timeout_s
         if job is None or job.page_started is None or self.clock() - job.page_started <= timeout:
             return False
+        if job.step is Step.CHECKING_PAGES:
+            what = "checking the pages"
+        elif job.page is None:
+            what = "rendering page 1"
+        else:
+            what = f"page {job.page} (recognizing it, or rendering the next page)"
         message = (
-            f"page {job.page} took longer than {timeout:g} s (SCANSCRIBE_MCP_PAGE_TIMEOUT_S); "
+            f"{what} took longer than {timeout:g} s (SCANSCRIBE_MCP_PAGE_TIMEOUT_S); "
             "restart the server to run more jobs"
         )
         if not self.table.finish(job.id, JobState.FAILED, error=message):
@@ -488,9 +497,11 @@ class OcrService:
         self._stuck = True
         dropped = self.table.fail_queued(STUCK_MESSAGE)
         logger.error(
-            "job %s failed: page %s passed the page timeout; %d queued jobs failed; "
-            "the server needs a restart",
+            "job %s failed: %s passed the page timeout (step %s, page %s); %d queued jobs "
+            "failed; the server needs a restart",
             job.id,
+            "the checking step" if job.step is Step.CHECKING_PAGES else "a page",
+            job.step,
             job.page,
             dropped,
         )

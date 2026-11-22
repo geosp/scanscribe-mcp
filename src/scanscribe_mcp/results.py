@@ -42,7 +42,7 @@ def job_fields(job: Job, now: float) -> dict[str, Any]:
         fields["page"] = job.page
     if job.total is not None:
         fields["total"] = job.total
-    if job.state is JobState.RUNNING and job.page_started is not None:
+    if job.state is JobState.RUNNING and job.page is not None and job.page_started is not None:
         fields["page_seconds"] = round(now - job.page_started, 1)
     if job.device is not None:
         fields["device"] = job.device
