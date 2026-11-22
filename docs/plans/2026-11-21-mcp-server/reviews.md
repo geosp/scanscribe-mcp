@@ -215,3 +215,20 @@ Fixes in 932fb34, owner-approved (F1; N10, N12-N15, N17, N18, N21; N11, N16, N20
 
 ## 2026-11-21 · done · phase 02
 Gate passed: 15/15 tasks, impl review passed (round 2). Checks from a clean clone of 4e7c493: ruff, format, mypy, 262 tests, agent sync, gitleaks. No manual-check record: task 5.3 became an automated curl test (owner's decision, plan Decision log).
+
+## 2026-11-22 · impl-review · phase 03 · round 1 · changes-requested
+Diff base: 8831461 · reviewed commit: 94c9b6f · profile `small` (contract lens)
+Reviewers: contract ✅
+Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-03-round-01-contract.md` (saved by `save-report`)
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| M1 | Major | contract | With `SCANSCRIBE_MCP_HOST_PORT` set and `PUBLIC_BASE_URL` unset, upload links and download URLs still point at port 8302 (R25, D9) | open |
+| N1 | Nit | contract | Compose doesn't pin the device, so a container that loses the GPU falls back to the CPU silently (R25) | open |
+| N2 | Nit | contract | Only three `SCANSCRIBE_MCP_*` variables reach the container; others in `.env` are ignored silently, and the docs don't say so | open |
+| N3 | Nit | contract | The healthcheck treats any HTTP error, a 5xx included, as healthy | open |
+| N4 | Nit | contract | plan.md's Phases table still shows phase 03 as approved, 0/8 | open |
+| N5 | Nit | contract | The record's test-suite command differs from task 3.2's (docs mount, `:z`, `-rs`, the `:dev` tag); disclosed | open |
+| N6 | Nit | contract | The record lacks evidence for tasks 1.1 and 1.2's verifies, the token read from a real `.env`, and a restart in the container | open |
+| N7 | Nit | contract | No automated test pins the Dockerfile and compose invariants (volume paths, cache location) | open |
+| N8 | Nit | contract | `.dockerignore` ignores only top-level `in/`, `out/`, `data/`; stray PDFs elsewhere reach the build context | open |
