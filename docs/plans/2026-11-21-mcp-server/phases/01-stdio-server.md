@@ -54,7 +54,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   engine released before the second load; a 501-page PDF and a 200 × 200 inch page each fail with
   the factory never called; `EngineMissingError` and a `RuntimeError` on page 2 each fail the job
   and the next job succeeds.
-- [ ] 2.3 Add cancelling: a per-job flag checked after the pre-check and after the engine loads,
+- [x] 2.3 Add cancelling: a per-job flag checked after the pre-check and after the engine loads,
   `on_page` raising `JobCancelled`, and queued jobs cancelled without running (D4, R10). Verify:
   a fake engine that blocks on page 3 until released sees no page 4 and the state is
   `cancelled`; a cancel during a slow pre-check stops before the factory is called; a cancel
