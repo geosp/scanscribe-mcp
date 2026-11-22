@@ -3,12 +3,12 @@
 Phase 01, task 4.4 of [the plan](../../plans/2026-11-21-mcp-server/phases/01-stdio-server.md): register the server with Claude Code over stdio, and OCR a self-made PDF of a few pages through `input_path`.
 
 > [!NOTE]
-> Prepared by an agent; **not run yet**. The owner runs it and fills in every `TODO`.
+> Run by an agent (Claude Code in VS Code) after the owner installed the `gpu` extra and registered the server in an untracked project `.mcp.json`; the owner has no `claude` command on this machine.
 
-- **Result:** TODO pass / fail, in one line
-- **Machine:** TODO CPU, GPU (e.g. RTX 3060, driver version) and OS
-- **Versions:** commit TODO (`git rev-parse --short HEAD`); scanscribe v0.2.0, mcp-service-kit v0.2.1, fastmcp TODO, paddlepaddle-gpu TODO, paddleocr TODO (`uv pip list | grep -Ei 'paddle|fastmcp'`)
-- **Who ran it:** TODO
+- **Result:** OCR over stdio on the GPU passes (text identical to the input), but the inline text of `get_ocr_result` doesn't reach the agent in Claude Code: only the structured fields do
+- **Machine:** AMD Ryzen 9 8945HS, NVIDIA GeForce RTX 3060 (driver 610.43.03), Fedora Linux 44 (kernel 7.1.7)
+- **Versions:** commit 77600eb; scanscribe 0.2.0, mcp-service-kit 0.2.1, fastmcp 4.2.4, paddlepaddle-gpu 3.3.1, paddleocr 3.7.0, paddlex 3.7.2
+- **Who ran it:** an agent, delegated by the owner (see the note above)
 - **Input:** a 3-page PDF drawn by [make_pdf.py](make_pdf.py) (sentences written for this check, at 200 dpi). No book material was used.
 
 ## Commands
@@ -18,6 +18,12 @@ cd /path/to/scanscribe-mcp
 uv sync --extra gpu
 uv run python docs/demos/2026-11-21-stdio-check/make_pdf.py /tmp/stdio-check/check.pdf
 claude mcp add scanscribe -- uv run --directory "$PWD" scanscribe-mcp
+```
+
+Without the `claude` command (as on the machine above), put the same server in a project `.mcp.json` and reload the editor; keep that file out of Git, since it holds a local path:
+
+```json
+{"mcpServers": {"scanscribe": {"command": "uv", "args": ["run", "--directory", "/path/to/scanscribe-mcp", "scanscribe-mcp"]}}}
 ```
 
 Then, in a new Claude Code session, ask:
@@ -34,9 +40,11 @@ Afterwards, remove the registration if you don't want it kept: `claude mcp remov
 
 ## Observations
 
-- **Device reported by `get_ocr_job`:** TODO (expected `gpu:0`)
-- **Pages:** TODO (expected 3)
-- **Time:** TODO s from `start_ocr_job` to `succeeded` (first job, including model download if any: TODO yes/no), and TODO s for a second run
-- **Steps seen while polling:** TODO
-- **Text compared with `expected.txt`:** TODO (identical / differences)
-- **Anything printed to the Claude Code session or the MCP log that wasn't a tool reply:** TODO
+- **Device reported by `get_ocr_job`:** `gpu:0`.
+- **Pages:** 3 of 3.
+- **Time:** the first job ran 5.6 s (`run_seconds`), including the engine load; no models were downloaded, because they were already in `~/.paddlex` from earlier scanscribe use. The second job ran 0.8 s on the loaded engine.
+- **Steps seen while polling:** none. Both jobs had finished by the first `get_ocr_job` call (`wait_s` 5 and 10), which returned `succeeded` with page 3 of 3.
+- **Text compared with `expected.txt`:** `diff` printed nothing; the text written through `output_path` (319 characters) is identical.
+- **Inline result:** `get_ocr_result` without `output_path` returned `"inline": true, "chars": 319`, but the agent saw only those structured fields, not the page text. The server sends the text as a second content block next to `structuredContent`, and Claude Code passed only the structured content to the model.
+- **Unknown job id:** a `get_ocr_job` call with a wrong id returned the tool error `no job with id '…'; it may have expired`.
+- **Anything printed to the session that wasn't a tool reply:** nothing.
