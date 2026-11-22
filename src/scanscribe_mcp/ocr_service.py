@@ -31,6 +31,7 @@ import scanscribe
 from scanscribe import IMAGE_EXTENSIONS, OcrEngine, PageImage, PageSource, ScanscribeError
 
 from .config import ScanscribeMcpConfig
+from .documents import DocumentStore
 from .jobs import Clock, Job, JobInput, JobState, JobTable, OcrOptions, Step
 
 logger = logging.getLogger(__name__)
@@ -115,8 +116,10 @@ class OcrService:
         open_source: SourceOpener = scanscribe.open_source,
         watchdog_interval_s: float = 1.0,
         on_stuck: Callable[[], None] | None = None,
+        store: DocumentStore | None = None,
     ) -> None:
         self.config = config
+        self.store = store  # HTTP only (D6)
         self.local_paths = local_paths
         self.transport = transport
         self.clock = clock

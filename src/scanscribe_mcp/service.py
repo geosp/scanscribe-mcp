@@ -1,7 +1,8 @@
 """The MCP service for scanscribe-mcp (D1).
 
 Builds the OCR service, starts its worker in `initialize()` and stops it in `cleanup()`, and
-registers the tools from features/*/tool.py.
+registers the tools from features/*/tool.py. Over HTTP it also builds the document store and
+serves stored documents at /documents/<id>/<filename> (D6).
 """
 
 from __future__ import annotations
@@ -14,8 +15,11 @@ from pathlib import Path
 import scanscribe
 from fastmcp import FastMCP
 from mcp_service_kit import BaseService
+from starlette.requests import Request
+from starlette.responses import FileResponse, PlainTextResponse, Response
 
 from .config import AppConfig
+from .documents import DocumentStore
 from .ocr_service import EngineFactory, OcrService
 
 logger = logging.getLogger(__name__)
@@ -35,11 +39,16 @@ class ScanscribeMCPService(BaseService):
     def initialize(self) -> None:
         if self.ocr is not None:
             return
+        store = None
+        if self.config.server.transport == "http":
+            store = DocumentStore(self.config.ocr.output_dir, self.config.base_url)
+            store.ensure_directory()
         self.ocr = OcrService(
             self.config.ocr,
             self.engine_factory,
             local_paths=self.config.local_paths_allowed,
             transport=self.config.server.transport,
+            store=store,
         )
         self.ocr.start()
         logger.info(
@@ -67,3 +76,17 @@ class ScanscribeMCPService(BaseService):
             tool_module = importlib.import_module(f"{features_package}.{feature_name}.tool")
             tool_module.register_tool(mcp, self.ocr)
             logger.info("Registered tool from feature: %s", feature_name)
+        if self.ocr.store is not None:
+            self._register_document_route(mcp, self.ocr.store)
+
+    def _register_document_route(self, mcp: FastMCP, store: DocumentStore) -> None:
+        @mcp.custom_route(
+            "/documents/{doc_id}/{filename}", methods=["GET"], include_in_schema=False
+        )
+        async def get_document(request: Request) -> Response:
+            doc_id, filename = request.path_params["doc_id"], request.path_params["filename"]
+            path = store.path_for(doc_id, filename)
+            document = store.get(doc_id) if path is not None else None
+            if path is None or document is None:
+                return PlainTextResponse("Not found", status_code=404)
+            return FileResponse(path, media_type=document.mime_type, filename=path.name)

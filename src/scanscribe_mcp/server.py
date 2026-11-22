@@ -9,6 +9,8 @@ Over stdio, stdout carries the MCP protocol: nothing here prints, and logs go to
 
 from __future__ import annotations
 
+import logging
+
 from fastmcp.server.auth import TokenVerifier
 from mcp_service_kit import BaseMCPServer, create_main_with_modes
 from pydantic import SecretStr
@@ -17,6 +19,8 @@ from . import __version__
 from .auth import BearerTokenVerifier
 from .config import AppConfig
 from .service import ScanscribeMCPService
+
+logger = logging.getLogger(__name__)
 
 INSTRUCTIONS = """\
 This server OCRs scanned books: a PDF, or a folder of page images (png, jpg, tif, bmp, webp),
@@ -63,6 +67,20 @@ class ScanscribeMCPServer(BaseMCPServer):
         """The bearer token on /mcp (D8, R19). Without one the kit refuses to serve HTTP."""
         token = self._token
         return BearerTokenVerifier(token) if token and token.get_secret_value() else None
+
+    def run_http_transport(self) -> None:
+        """The kit's HTTP run, with uvicorn's access log off: its lines would hold upload
+        tokens and document ids, which are in the paths (D8, R22)."""
+        assert self._mcp_app is not None
+        logger.info("Starting %s with HTTP transport", self.service_title)
+        logger.info("MCP endpoint: %s", self.http_endpoint_url())
+        self._mcp_app.run(
+            transport="http",
+            host=self.config.host,
+            port=self.config.port,
+            log_level=logging.getLevelName(logging.getLogger().getEffectiveLevel()).lower(),
+            uvicorn_config={"access_log": False},
+        )
 
     def validate_configuration(self) -> None:
         token = self._token

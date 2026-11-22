@@ -35,7 +35,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
 
 ### 2. Document store
 
-- [ ] 2.1 Add `documents.py` from pandoc-mcp (`DocumentStore`, `safe_filename`, purge) with the
+- [x] 2.1 Add `documents.py` from pandoc-mcp (`DocumentStore`, `safe_filename`, purge) with the
   MIME types this server needs, and the `/documents/<id>/<filename>` route (D6, R20). Verify:
   unit tests for save, get, a wrong filename, a malformed id, and purge of an old document
   except one a live job uses.
