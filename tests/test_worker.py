@@ -5,13 +5,16 @@ R4, R8, R11, R12, R26, R27.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
 import scanscribe
 from scanscribe import EngineMissingError, PageSource
 
+from scanscribe_mcp.config import ScanscribeMcpConfig
 from scanscribe_mcp.jobs import JobState
+from scanscribe_mcp.ocr_service import OcrService
 
 from .fakes import FakeEngineFactory, make_pages, make_pdf
 from .service_helpers import running_service, wait_for
@@ -135,3 +138,19 @@ def test_columns_reach_scanscribe(tmp_path: Path, columns: int) -> None:
         job = wait_for(service, service.start_job(input_path=str(folder), columns=columns).id)
     assert job.state is JobState.SUCCEEDED
     assert factory.last is not None and len(factory.last.seen) == columns
+
+
+def test_real_load_engine_without_paddle_fails_the_job(tmp_path: Path) -> None:
+    """The base install has no PaddlePaddle: scanscribe's own load_engine reports it (R12)."""
+    folder = make_pages(tmp_path / "pages", 1)
+    service = OcrService(
+        ScanscribeMcpConfig(), scanscribe.load_engine, local_paths=True, transport="stdio"
+    )
+    service.start()
+    try:
+        job = wait_for(service, service.start_job(input_path=str(folder)).id)
+    finally:
+        service.stop()
+    assert job.state is JobState.FAILED and job.error is not None
+    assert "uv sync --extra gpu" in job.error and "uv sync --extra cpu" in job.error
+    assert "paddle" not in sys.modules and "paddleocr" not in sys.modules

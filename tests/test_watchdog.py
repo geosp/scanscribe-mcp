@@ -143,3 +143,40 @@ def test_a_hung_pre_check_trips_the_watchdog(tmp_path: Path) -> None:
             assert factory.calls == []  # the late pre-check doesn't go on to the engine
     finally:
         release.set()
+
+
+def test_a_start_racing_the_watchdog_never_leaves_a_job_queued(tmp_path: Path) -> None:
+    folder = make_pages(tmp_path / "pages", 2)
+    clock = FakeClock()
+    hang = threading.Event()
+    factory = FakeEngineFactory(hooks={1: lambda: hang.wait(10) and None})
+    with running_service(factory, clock=clock, watchdog_interval_s=60) as service:
+        running = service.start_job(input_path=str(folder)).id
+        wait_until(service, running, Step.RECOGNIZING, page=1)
+        in_submit, go_on = threading.Event(), threading.Event()
+        real_submit = service.table.submit
+
+        def slow_submit(*args: object, **kwargs: object) -> object:
+            in_submit.set()
+            go_on.wait(10)
+            return real_submit(*args, **kwargs)  # type: ignore[arg-type]
+
+        service.table.submit = slow_submit  # type: ignore[method-assign,assignment]
+        started: list[str] = []
+        starter = threading.Thread(
+            target=lambda: started.append(service.start_job(input_path=str(folder)).id)
+        )
+        starter.start()
+        assert in_submit.wait(10)  # the start passed the stuck check and is about to queue
+        clock.advance(601)
+        firing = threading.Thread(target=service.check_watchdog)
+        firing.start()
+        time.sleep(0.1)
+        go_on.set()
+        starter.join(10)
+        firing.join(10)
+        hang.set()
+        assert service.stuck and len(started) == 1
+        late = service.get_job(started[0])
+        assert late.state is JobState.FAILED and late.error is not None
+        assert "restart the server" in late.error

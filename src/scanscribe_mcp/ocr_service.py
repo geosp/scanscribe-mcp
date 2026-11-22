@@ -134,6 +134,7 @@ class OcrService:
         self._engine_lang: str | None = None
         self._engine_device: str | None = None
         self._stuck = False
+        self._admission = threading.Lock()
         self._stopping = threading.Event()
         self._threads: list[threading.Thread] = []
 
@@ -174,6 +175,8 @@ class OcrService:
         columns: int | None = None,
     ) -> Job:
         """Check a job's input and options and queue it (R1-R4, R6, R28)."""
+        if input_path is not None:
+            self.check_local_paths("input_path")
         given = [
             name
             for name, value in (
@@ -189,15 +192,18 @@ class OcrService:
                 + (f" (got {', '.join(given)})" if given else "")
             )
         options = self.options(lang, dpi, columns)
-        if self._stuck:
-            raise ServiceStuckError(STUCK_MESSAGE)
         if input_path is None:
             raise ValueError(
                 f"{given[0]} needs the HTTP server's upload links, which this server doesn't "
                 "offer yet; pass input_path on a local stdio server"
             )
         job_input = self._local_input(input_path)
-        job = self.table.submit(job_input, options)
+        # The stuck check and the submit hold the lock the watchdog takes to go stuck, so no job
+        # is queued after the watchdog has failed the queue (R28).
+        with self._admission:
+            if self._stuck:
+                raise ServiceStuckError(STUCK_MESSAGE)
+            job = self.table.submit(job_input, options)
         logger.info(
             "job %s queued: %s, %s bytes, %s page images, lang %s, dpi %d, columns %d",
             job.id,
@@ -492,10 +498,11 @@ class OcrService:
             f"{what} took longer than {timeout:g} s (SCANSCRIBE_MCP_PAGE_TIMEOUT_S); "
             "restart the server to run more jobs"
         )
-        if not self.table.finish(job.id, JobState.FAILED, error=message):
-            return False
-        self._stuck = True
-        dropped = self.table.fail_queued(STUCK_MESSAGE)
+        with self._admission:
+            if not self.table.finish(job.id, JobState.FAILED, error=message):
+                return False
+            self._stuck = True
+            dropped = self.table.fail_queued(STUCK_MESSAGE)
         logger.error(
             "job %s failed: %s passed the page timeout (step %s, page %s); %d queued jobs "
             "failed; the server needs a restart",

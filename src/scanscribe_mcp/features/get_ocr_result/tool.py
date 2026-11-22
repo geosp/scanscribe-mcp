@@ -40,6 +40,8 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
         and the reply names the next first_page.
         """
         if output_path is not None:
+            with tool_errors("get_ocr_result"):
+                ocr.check_local_paths("output_path")
             if first_page is not None or last_page is not None:
                 raise ToolError(
                     "output_path writes the whole text; leave out first_page and last_page"

@@ -475,3 +475,41 @@ async def test_unexpected_tool_error_hides_the_path_from_logs_and_client(
         if record.exc_info and not record.exc_text:
             text += logging.Formatter().formatException(record.exc_info)
         assert "chapter-3" not in text, record.name
+
+
+async def test_local_path_errors_come_first(make_client: MakeClient, tmp_path: Path) -> None:
+    folder = make_pages(tmp_path / "pages", 1)
+    off = await make_client(allow_local_paths=False)
+    with pytest.raises(ToolError, match="ALLOW_LOCAL_PATHS=false"):
+        await start(off, input_path=str(folder), lang="xx")
+    with pytest.raises(ToolError, match="ALLOW_LOCAL_PATHS=false"):
+        await off.call_tool(
+            "get_ocr_result", {"job_id": "x", "output_path": "/tmp/x.txt", "first_page": 1}
+        )
+    http = await make_client(transport="http")
+    with pytest.raises(ToolError, match="not accepted over HTTP"):
+        await start(http, input_path=str(folder), dpi=600)
+
+
+async def test_output_path_never_over_http(make_client: MakeClient, tmp_path: Path) -> None:
+    client = await make_client(transport="http", allow_local_paths=True)
+    target = tmp_path / "x.txt"
+    with pytest.raises(ToolError, match="output_path is not accepted over HTTP"):
+        await client.call_tool("get_ocr_result", {"job_id": "x", "output_path": str(target)})
+    assert not target.exists()
+
+
+async def test_cancel_reply_promises_only_the_next_page(
+    make_client: MakeClient, tmp_path: Path
+) -> None:
+    folder = make_pages(tmp_path / "pages", 1)
+    release = threading.Event()
+    client = await make_client(FakeEngineFactory(hooks={1: lambda: release.wait(10) and None}))
+    try:
+        job_id = await start(client, input_path=str(folder))
+        await wait_state(client, job_id, "running", page=1)
+        result = await client.call_tool("cancel_ocr_job", {"job_id": job_id})
+        assert "if it has one" in result.content[0].text
+    finally:
+        release.set()
+    assert (await finish(client, job_id))["state"] == "succeeded"  # page 1 was the last page

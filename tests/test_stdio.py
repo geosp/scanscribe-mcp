@@ -37,9 +37,13 @@ class StdioSession:
         self._queue: queue.Queue[str | None] = queue.Queue()
         self._next_id = 0
         assert self.process.stdout is not None and self.process.stderr is not None
-        threading.Thread(target=self._read, args=(self.process.stdout,), daemon=True).start()
+        self._readers = [
+            threading.Thread(target=self._read, args=(self.process.stdout,), daemon=True),
+            threading.Thread(target=self._drain, args=(self.process.stderr,), daemon=True),
+        ]
         self.stderr: list[str] = []
-        threading.Thread(target=self._drain, args=(self.process.stderr,), daemon=True).start()
+        for reader in self._readers:
+            reader.start()
 
     def _read(self, stream: IO[str]) -> None:
         for line in stream:
@@ -84,6 +88,10 @@ class StdioSession:
         finally:
             if self.process.poll() is None:
                 self.process.kill()
+        # Lines written at exit (the case D10 is about) must be read before anyone asserts.
+        for reader in self._readers:
+            reader.join(timeout=15)
+            assert not reader.is_alive(), "a pipe reader didn't finish"
 
 
 def non_mcp_lines(lines: list[str]) -> list[str]:

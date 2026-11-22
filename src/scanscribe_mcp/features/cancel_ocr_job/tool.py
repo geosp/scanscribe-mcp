@@ -32,8 +32,9 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
             line = f"Job {job.id} was cancelled before it started."
         elif job.state is JobState.RUNNING:
             line = (
-                f"Job {job.id} will stop at its next check (before the next page); "
-                "get_ocr_job shows when it is cancelled."
+                f"Job {job.id} will stop at its next check: before its next page, if it has "
+                "one. get_ocr_job shows whether it ends cancelled or, if the last page was "
+                "already being read, succeeded."
             )
         else:
             line = f"Job {job.id} has already finished as {job.state}; nothing was cancelled."

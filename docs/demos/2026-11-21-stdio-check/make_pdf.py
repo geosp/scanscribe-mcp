@@ -48,7 +48,8 @@ def main() -> None:
     expected = "\n\n".join(
         f"--- Page {n} ---\n" + "\n".join(lines) for n, lines in enumerate(PAGES, 1)
     )
-    (target.parent / "expected.txt").write_text(expected + "\n", encoding="utf-8")
+    # No final newline: get_ocr_result writes format_pages output exactly, without one.
+    (target.parent / "expected.txt").write_text(expected, encoding="utf-8")
     print(f"wrote {target} ({len(PAGES)} pages) and {target.parent / 'expected.txt'}")
 
 
