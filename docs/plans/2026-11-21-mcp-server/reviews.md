@@ -95,3 +95,15 @@ Fixes applied 2026-11-21: every Major fixed or accepted (G12). Status: passed. T
 
 ## 2026-11-21 · approved · plan and phases 01–03
 Approved by the owner after design review round 2 passed.
+
+## 2026-11-21 · design-review · plan · round 3 · changes-requested
+Commit: c3643fd. Scope: the D10 / R28 / D2 update made during phase 01's apply. Lenses: codebase fit only (owner's choice).
+Reviewers: codebase fit ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/design-review-03-codebase-fit.md)
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| H1 | Major | codebase fit | No phase 01 task adds D10's per-job `redirect_stdout`; task 2.2 is ticked without it | open |
+| H2 | Nit | codebase fit | Task 2.5 and 3.5 Verify lines don't cover queued jobs failing, `output_path` with a range, or a page over the inline limit; no tests for the last two | open |
+| H3 | Nit | codebase fit | Phases table shows phase 01 as 0/16 | open |
+| H4 | Nit | codebase fit | Phase 01 branch `docs/plan-mcp-server` doesn't follow `<type>/<issue>-<slug>` | open |
+| H5 | Nit | codebase fit | notes.md#d10 credits fastmcp with the fd-1 diversion; it is in `mcp` (2.3.0) | open |

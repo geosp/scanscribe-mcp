@@ -3,7 +3,7 @@ title: A working scanscribe MCP server
 status: in-progress
 created: 2026-11-21
 updated: 2026-11-21
-design_review: { status: changes-requested, rounds: 2, last: 2026-11-21 }
+design_review: { status: changes-requested, rounds: 3, last: 2026-11-21 }
 approved: 2026-11-21
 adr_review: null
 ---
