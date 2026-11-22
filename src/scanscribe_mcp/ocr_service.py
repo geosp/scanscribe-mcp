@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import secrets
+import sys
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -356,7 +357,10 @@ class OcrService:
         started = self.clock()
         logger.info("job %s started", job.id)
         try:
-            pages = self._process(job)
+            # A print() during the job would sit in sys.stdout's buffer and reach the MCP wire
+            # at exit, after the transport hands fd 1 back (D10, notes.md#d10).
+            with contextlib.redirect_stdout(sys.stderr):
+                pages = self._process(job)
         except JobCancelled:
             if self.table.finish(job.id, JobState.CANCELLED):
                 logger.info("job %s cancelled", job.id)

@@ -105,7 +105,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   and `paddleocr` were never imported; generate small fixture images and PDFs in the tests (no
   book material) (R24). Verify: `uv run pytest` passes on the base install, and the check fails
   when a test puts a stub module named `paddle` into `sys.modules` on purpose.
-- [ ] 4.2 Run each job in the worker inside `contextlib.redirect_stdout(sys.stderr)` (D10). Add
+- [x] 4.2 Run each job in the worker inside `contextlib.redirect_stdout(sys.stderr)` (D10). Add
   `tests/stdio_launcher.py`, which builds the server with the fake engine factory and runs it over
   stdio, and a subprocess test that runs a job through it and parses every stdout
   line as MCP; the fake engine prints to stdout while recognizing (D3, D10, R21). Verify: the
