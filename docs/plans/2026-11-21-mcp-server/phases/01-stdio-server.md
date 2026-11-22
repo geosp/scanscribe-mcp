@@ -1,7 +1,7 @@
 ---
 phase: 1
 title: stdio server with jobs and a fake engine
-status: impl-reviewed
+status: done
 branch: docs/plan-mcp-server
 base: 34a1a04be3f342a60a2ab38e6dccad3b6c06cbac
 delivers: [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R21, R22, R24, R26, R27, R28]
@@ -118,7 +118,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   the AGENTS.md checks if they change; add the four job tools and the phase 01 variables to
   `docs/decision-log.md`. Verify: the link checker in CI passes; every tool and variable in the
   code is in the README and the decision log.
-- [ ] 4.4 With `uv sync --extra gpu`, register the server with Claude Code over stdio and OCR a
+- [x] 4.4 With `uv sync --extra gpu`, register the server with Claude Code over stdio and OCR a
   self-made PDF of a few pages through `input_path`; record the check in
   `docs/demos/<date>-stdio-check/README.md`. Verify: the record states the result, device, page
   count and time, and that no book material was used.
