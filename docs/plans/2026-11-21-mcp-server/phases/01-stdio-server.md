@@ -89,7 +89,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   the current page; an unknown id is a tool error.
 - [x] 3.4 Add `features/cancel_ocr_job/tool.py` (R10). Verify: client tests for queued, running
   and finished jobs.
-- [ ] 3.5 Add `features/get_ocr_result/tool.py`: inline text up to `MAX_INLINE_CHARS`,
+- [x] 3.5 Add `features/get_ocr_result/tool.py`: inline text up to `MAX_INLINE_CHARS`,
   `first_page` / `last_page` slices, and `output_path` when local paths are allowed (R2, R13,
   R14). Verify: client tests for a small result inline, a large one not inline with a page
   count, a slice of pages 10–12 with their markers, a slice longer than the limit cut at a page

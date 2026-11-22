@@ -425,3 +425,32 @@ async def test_result_of_an_unfinished_job(make_client: MakeClient, tmp_path: Pa
             await client.call_tool("get_ocr_result", {"job_id": job_id})
     finally:
         release.set()
+
+
+async def test_output_path_with_a_page_range_is_refused(
+    make_client: MakeClient, tmp_path: Path
+) -> None:
+    client = await make_client()
+    job_id = await succeeded_job(client, make_pages(tmp_path / "pages", 2))
+    target = tmp_path / "out.txt"
+    for pages in ({"first_page": 1}, {"last_page": 2}):
+        with pytest.raises(ToolError, match="output_path writes the whole text"):
+            await client.call_tool(
+                "get_ocr_result", {"job_id": job_id, "output_path": str(target), **pages}
+            )
+    assert not target.exists()
+
+
+async def test_page_longer_than_the_limit_returns_no_text(
+    make_client: MakeClient, tmp_path: Path
+) -> None:
+    client = await make_client(FakeEngineFactory(lines_per_page=20), max_inline_chars=100)
+    job_id = await succeeded_job(client, make_pages(tmp_path / "pages", 3))
+    result = await client.call_tool(
+        "get_ocr_result", {"job_id": job_id, "first_page": 2, "last_page": 3}
+    )
+    assert len(result.content) == 1
+    assert "Page 2 alone is longer than the 100-character inline limit" in result.content[0].text
+    assert "output_path" in result.content[0].text
+    fields = result.structured_content
+    assert fields["inline"] is False and fields["next_first_page"] == 2
