@@ -33,6 +33,7 @@ from scanscribe import IMAGE_EXTENSIONS, OcrEngine, PageImage, PageSource, Scans
 from .config import ScanscribeMcpConfig
 from .documents import DocumentStore, StoredDocument
 from .jobs import Clock, Job, JobInput, JobState, JobTable, OcrOptions, Step
+from .uploads import UploadLinks
 
 logger = logging.getLogger(__name__)
 
@@ -117,11 +118,13 @@ class OcrService:
         watchdog_interval_s: float = 1.0,
         on_stuck: Callable[[], None] | None = None,
         store: DocumentStore | None = None,
+        uploads: UploadLinks | None = None,
         purge_interval_s: float = 3600.0,
         purge_poll_s: float = 60.0,
     ) -> None:
         self.config = config
         self.store = store  # HTTP only (D6)
+        self.uploads = uploads  # HTTP only (D7)
         self.local_paths = local_paths
         self.transport = transport
         self.clock = clock

@@ -52,7 +52,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   when a job starts (D7, R15, R16). Verify: unit tests with an injected clock for expiry,
   used-up and closed links, the active-link limit, the byte total, and start-up refusing
   `UPLOAD_LINK_MAX_FILES=201`.
-- [ ] 3.2 Add the `/upload/<token>` GET form and POST route, with the per-file and per-link size
+- [x] 3.2 Add the `/upload/<token>` GET form and POST route, with the per-file and per-link size
   checks done while streaming; a file is stored only after its last byte, and the grant counts
   uploads in progress; the link is checked when a request starts, so a running upload may finish
   past expiry (R15, R16, R29). Verify: HTTP tests for a good upload, an expired and a used-up link
