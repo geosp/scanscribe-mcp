@@ -45,7 +45,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   `expired` (D2, R5, R6, R7). Verify: unit tests with an injected clock for order, the 21st job
   refused, 20 cancelled jobs not counted, expiry on read, the worker skipping cancelled and
   expired entries, and purge of finished jobs after `JOB_RETENTION_S`.
-- [ ] 2.2 Add the worker thread to `ocr_service.py`, in D5's order: PDF page sizes (R27,
+- [x] 2.2 Add the worker thread to `ocr_service.py`, in D5's order: PDF page sizes (R27,
   notes.md#r27), `open_source`, the page limit, then the engine through the injected factory
   (loaded at the first job, dropped before a language change and after any error while it was
   recognizing), then `ocr_source` and `format_pages`; record the step, page progress and final
