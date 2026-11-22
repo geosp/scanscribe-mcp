@@ -31,7 +31,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   `uv lock --check` with CI's uv pass; `uv sync --extra gpu --dry-run` resolves
   `paddlepaddle-gpu` from the cu126 index; the PR's `licenses` job passes, and any licence added
   to its allow-list gets a line in `docs/decision-log.md`.
-- [ ] 1.2 Add `config.py`: `ScanscribeMcpConfig` with the variables marked phase 01 in
+- [x] 1.2 Add `config.py`: `ScanscribeMcpConfig` with the variables marked phase 01 in
   [notes.md#configuration](../notes.md#configuration) and `AppConfig` with
   `local_paths_allowed` (D1, R2, R3). Verify: unit tests for defaults, env overrides, `LANGS`
   parsing, and `local_paths_allowed`: true over stdio unless the variable is `false`, and always

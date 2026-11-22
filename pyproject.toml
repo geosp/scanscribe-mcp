@@ -77,6 +77,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 # tests/test_ci_gate.py imports the CI gate script directly.
 pythonpath = [".github/scripts"]
