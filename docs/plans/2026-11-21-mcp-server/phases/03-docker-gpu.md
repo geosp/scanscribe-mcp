@@ -53,7 +53,7 @@ it.
 - [x] 2.3 Add the Docker interface to `docs/decision-log.md` (image, port 8302, volumes) and
   leave the AGENTS.md Status line for `impl-plan close` to update. Verify: the decision log lists
   them; `uv run .agents/sync_agents.py --check` passes.
-- [ ] 2.4 Draw every diagram in the project's documents in Mermaid (owner's request, plan
+- [x] 2.4 Draw every diagram in the project's documents in Mermaid (owner's request, plan
   Decision log): the layer diagram and the upload sequence in `docs/ARCHITECTURE.md`, and the
   Summary sketch in `plan.md`. Folder listings stay text; raw review reports stay verbatim. Add
   the rule to `AGENTS.md` and `docs/decision-log.md`. Verify: no text-drawn diagram is left in a
