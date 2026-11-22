@@ -43,8 +43,10 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
         """
         Start OCR of one input as a background job and return its job_id at once
 
-        Pass exactly one of input_path, upload_id or document. Jobs run one at a time, in
-        order. Follow the job with get_ocr_job(job_id, wait_s=60), then fetch the text with
+        Pass exactly one of input_path, upload_id or document. From an upload_id the job takes
+        that link's files: one PDF, one zip of page images, or page images, read in natural
+        name order (p2 before p10); the link then closes. Jobs run one at a time, in order.
+        Follow the job with get_ocr_job(job_id, wait_s=60), then fetch the text with
         get_ocr_result(job_id).
         """
         with tool_errors("start_ocr_job"):
@@ -62,6 +64,15 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
         lines = [
             f"Job {job.id} is {job.state} (lang {job.options.lang}, dpi {job.options.dpi}, "
             f"columns {job.options.columns}).",
-            f"Follow it with get_ocr_job(job_id={job.id!r}, wait_s=60).",
         ]
+        if job.input.files:
+            fields["files"] = list(job.input.files)
+            shown = ", ".join(job.input.files[:10])
+            more = len(job.input.files) - 10
+            lines.append(
+                f"It took {len(job.input.files)} uploaded file(s): {shown}"
+                + (f" and {more} more" if more > 0 else "")
+                + "."
+            )
+        lines.append(f"Follow it with get_ocr_job(job_id={job.id!r}, wait_s=60).")
         return reply(lines, fields)

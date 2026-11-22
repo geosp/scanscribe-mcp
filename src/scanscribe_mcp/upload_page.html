@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>scanscribe-mcp upload</title>
+<style>
+  :root { color-scheme: light dark; --accent: #2f6fde; --muted: #8a8f98; --border: #8a8f9855; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 16px; }
+  h1 { font-size: 1.3rem; margin-bottom: 0.25rem; }
+  p.hint { color: var(--muted); margin-top: 0; }
+  label { display: block; font-weight: 600; margin: 1rem 0 0.3rem; }
+  #drop { border: 2px dashed var(--border); border-radius: 10px; padding: 2rem 1rem;
+    text-align: center; cursor: pointer; margin-top: 1rem; }
+  #drop.over { border-color: var(--accent); }
+  #status { margin-top: 1rem; min-height: 1.5em; }
+  .error { color: #d33; }
+  .result { display: flex; gap: 1rem; align-items: center; border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.75rem; margin-top: 0.75rem; }
+  .result code { font-size: 0.85rem; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Upload pages to OCR</h1>
+<p class="hint">This link was created by your assistant. Upload the page images (png, jpg,
+tif, bmp, webp), or one PDF, or one zip of page images. The link works for a few minutes and a
+limited number of files. When you're done, tell the assistant.</p>
+
+<div id="drop">Drop files here, or click to choose
+  <input id="file" type="file" multiple hidden
+    accept=".pdf,.zip,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp">
+</div>
+<div id="status"></div>
+<div id="results"></div>
+
+<script>
+const drop = document.getElementById("drop");
+const fileInput = document.getElementById("file");
+const statusEl = document.getElementById("status");
+const results = document.getElementById("results");
+
+drop.addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", () => upload(fileInput.files));
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => {
+  e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files);
+});
+
+async function upload(files) {
+  if (!files.length) return;
+  // All the chosen files go in one request: the server stores them all or none, and a job
+  // can't start between two of them.
+  const body = new FormData();
+  for (const file of files) body.append("file", file);
+  statusEl.className = ""; statusEl.textContent = `Uploading ${files.length} file(s)…`;
+  try {
+    // The page's own URL carries the upload token
+    const response = await fetch(location.pathname, { method: "POST", body });
+    const data = await response.json().catch(() => ({ error: response.statusText }));
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    data.files.forEach(show);
+    statusEl.textContent = data.remaining > 0
+      ? `Done. This link accepts ${data.remaining} more file(s).`
+      : "Done. This link is now used up; tell the assistant you're finished.";
+  } catch (err) {
+    statusEl.className = "error"; statusEl.textContent = `Upload failed: ${err.message}`;
+  }
+}
+
+function show(file) {
+  const row = document.createElement("div"); row.className = "result";
+  const name = document.createElement("code"); name.textContent = file.filename;
+  const meta = document.createElement("span"); meta.className = "hint";
+  meta.textContent = `${file.size} bytes`;
+  row.append(name, meta); results.prepend(row);
+}
+</script>
+</body>
+</html>

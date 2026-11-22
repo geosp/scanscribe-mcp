@@ -54,7 +54,8 @@ class JobInput:
 
     `path` is the server's path and never leaves the server; `name` is the caller's own name for
     the input (the `input_path` as given), used in error messages (D11). `size` is the file size
-    in bytes, and `page_count` the number of images when the input is a folder.
+    in bytes, and `page_count` the number of images when the input is a folder. `documents` are
+    the stored documents the job reads (HTTP only), which purge must keep while it lives.
     """
 
     kind: str
@@ -62,6 +63,9 @@ class JobInput:
     name: str
     size: int | None = None
     page_count: int | None = None
+    documents: tuple[str, ...] = ()
+    files: tuple[str, ...] = ()
+    """The uploaded file names the job took, for the caller's reply only (never logged)."""
 
 
 @dataclass
@@ -78,6 +82,7 @@ class Job:
     device: str | None = None
     error: str | None = None
     pages: list[list[str]] | None = None
+    result_document: str | None = None
     started: float | None = None
     finished: float | None = None
     cancel_requested: bool = field(default=False, repr=False)
@@ -120,8 +125,9 @@ class JobTable:
 
     # --- used by the tools -------------------------------------------------------------------
 
-    def submit(self, job_input: JobInput, options: OcrOptions) -> Job:
-        """Create a queued job and put it at the end of the queue (R5, R6)."""
+    def submit(self, job_input: JobInput, options: OcrOptions, job_id: str | None = None) -> Job:
+        """Create a queued job and put it at the end of the queue (R5, R6). `job_id` lets the
+        caller name the job folder in its input before the job exists."""
         with self._lock:
             self._refresh()
             queued = sum(1 for job in self._jobs.values() if job.state is JobState.QUEUED)
@@ -129,7 +135,9 @@ class JobTable:
                 raise QueueFullError(
                     f"the queue is full ({self.max_queued} jobs waiting); try again later"
                 )
-            job = Job(id=new_job_id(), input=job_input, options=options, created=self.clock())
+            job = Job(
+                id=job_id or new_job_id(), input=job_input, options=options, created=self.clock()
+            )
             self._jobs[job.id] = job
             self._queue.put(job.id)
             return dataclasses.replace(job)
@@ -207,6 +215,7 @@ class JobTable:
         *,
         error: str | None = None,
         pages: list[list[str]] | None = None,
+        result_document: str | None = None,
     ) -> bool:
         """Move a running job to a final state. Returns False if it had already left `running`."""
         with self._lock:
@@ -215,6 +224,7 @@ class JobTable:
                 return False
             job.error = error
             job.pages = pages
+            job.result_document = result_document
             self._finish(job, state)
             return True
 
@@ -230,6 +240,17 @@ class JobTable:
                 if job.state is JobState.RUNNING:
                     return dataclasses.replace(job)
             return None
+
+    def live_documents(self) -> set[str]:
+        """The stored documents that queued and running jobs read."""
+        with self._lock:
+            self._refresh()
+            return {
+                doc_id
+                for job in self._jobs.values()
+                if not job.is_final
+                for doc_id in job.input.documents
+            }
 
     def fail_queued(self, error: str) -> int:
         """Fail every queued job with `error`; returns how many."""

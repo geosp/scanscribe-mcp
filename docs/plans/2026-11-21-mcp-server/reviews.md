@@ -164,3 +164,54 @@ Fixes applied 2026-11-21 (owner's choice): J1, J5, J7, J9, J10, J12, J13 fixed; 
 
 ## 2026-11-21 · note · phase 01 · manual check finding
 Task 4.4 showed that Claude Code gives the model only a tool's `structuredContent`, so `get_ocr_result`'s inline text never reached the agent (R13). Fixed test first: every reply carries its summary as `message`, and `get_ocr_result` its text as `text`, in structured content (test_small_result_inline, test_large_result_not_inline, test_page_slice_with_markers). Owner's choice; the manual check reruns the inline call.
+
+## 2026-11-21 · impl-review · phase 02 · round 1 · changes-requested
+Diff base: 872ec10 · reviewed commit: 925f427 · profile `small` (contract lens only)
+Reviewers: contract ✅ (a first attempt on e48c71e stopped at the usage limit with no report; a fresh reviewer ran on 925f427)
+Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-02-round-01-contract.md` (re-typed: `save-report` refused twice, because the reviewer handed its report back as a message, not as its final result)
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| M1 | Major | contract | A body cut off before its closing boundary is stored as a whole file: python-multipart's `finalize()` is a no-op (R15, R29, task 3.2) | fixed: `on_end` and per-part `ended` in `UploadReceiver` (uploads.py); test_upload_routes.py::test_a_body_cut_before_its_closing_boundary_stores_nothing |
+| M2 | Major | contract | An upload whose part headers haven't arrived isn't counted as in progress, so a job can start and close the link, and the late file is stored on the closed link outside the job (R29, D7) | fixed: the route counts each request (`Grant.requests`) from entry and `start_ocr_job` refuses while one is open; parts and the commit refuse a closed link (uploads.py, service.py, ocr_service.py); test_upload_jobs.py::test_a_start_during_a_real_upload_is_refused_and_the_upload_lands, ::test_no_file_is_stored_on_a_link_closed_mid_request |
+| M3 | Major | contract | Part header bytes count against no limit; a chunked request skips the declared-length check (R16) | fixed: part headers and other fields share the 64 KiB `FIELD_LIMIT` per request (uploads.py). One huge header was already refused by python-multipart (8 lines of 4,224 bytes per part); the unbounded case was endless empty field parts; test_upload_routes.py::test_header_and_part_counts_are_limited |
+| M4 | Major | contract | The log line "result stored as document <id>" plus the job id rebuilds the token-free download URL (D8, R22) | fixed: the log line names the job and size, not the document id (ocr_service.py); test_http_logs.py forbids the id |
+| M5 | Major | contract | Over HTTP the `output_path` error doesn't name upload links, as R2's Then says | fixed: the message names the download URL and upload links (ocr_service.py); test_http_auth.py::test_local_paths_refused_over_http_even_when_allowed |
+| N1 | Nit | contract | `safe_filename`'s 120-character cut can drop the extension, so a long-named page is skipped silently | fixed: `safe_filename` cuts before the suffix (documents.py); test_documents.py::test_a_long_name_keeps_its_extension |
+| N2 | Nit | contract | Zip entries are written under raw base names, not through `safe_filename` (D8) | fixed: `page_name` puts zip entries through `safe_filename`, duplicates checked after (uploads.py); test_zips.py::test_zip_entries_get_plain_names, ::test_names_equal_after_cleaning_are_duplicates |
+| N3 | Nit | contract | If `store.begin` raises after `links.begin`, `in_progress` is never given back and the OSError reaches uvicorn | fixed: the document is made before the link counts the part; the route answers 500 and logs the class only (uploads.py, service.py); test_upload_routes.py::test_a_store_error_gives_back_the_upload_and_hides_its_text |
+| N4 | Nit | contract | `count_zip_pages` ignores `max_pages` and counts non-image entries, so the start-time message can mislead | fixed: `count_zip_pages` applies every `zip_pages` rule but the page limit (uploads.py); test_zips.py::test_a_non_image_entry_is_named_at_start |
+| N5 | Nit | contract | A document at the retention age can be purged between `store.get` and `submit`; the job then fails at run time | accepted: a tiny window, only for a document at the retention age; the job then fails cleanly at run time |
+| N6 | Nit | contract | Zip extraction runs inside the timed `checking pages` step; a slow 2 GB unpack could trip the watchdog | accepted: R28 times the `checking pages` step, which includes the unpack; 600 s is ample for 2 GB |
+| N7 | Nit | contract | `scrub` replaces the relative "data/work" anywhere in an error, including the caller's own names | fixed: `scrub` uses absolute spellings only (ocr_service.py); test_http_messages.py::test_scrub_leaves_the_callers_own_names_alone |
+| N8 | Nit | contract | The declared-length 413 is tested only with `max_files=1`, not at R16's defaults | fixed: test only, the behaviour was right; test_upload_routes.py::test_a_250_mb_file_answers_413_at_the_default_limits |
+| N9 | Nit | contract | ARCHITECTURE.md says the start and the upload route "never interleave"; untrue at await points | fixed: docs/ARCHITECTURE.md now says the two interleave and how the route guards it |
+
+Fixes in 9f9df6c, owner-approved (all Majors; N1-N4, N7-N9; N5 and N6 accepted). Each test failed before its fix and fails again when the fix is reverted.
+
+## 2026-11-21 · impl-review · phase 02 · round 2 · changes-requested
+Diff base: 872ec10 · reviewed commit: beb0ef1 · profile `small` (contract lens), owner-requested after round 1's Majors were fixed
+Reviewers: contract ✅
+Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-02-round-02-contract.md` (saved by `save-report`). Correction to round 1's note: a hand-back report saves fine, so round 1's refusals were most likely the coordinator's snippets, not the hand-back.
+No round 1 finding came back.
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| F1 | Major | contract | An upload named `meta.json` (or `../meta.json`) collides with the store's metadata file; `get()` then finds no file and every start on that link is refused as "no longer stored" (D7, R29) | fixed: `DocumentStore.begin` stores an upload named `meta.json` as `meta_.json` (documents.py); test_upload_jobs.py::test_an_upload_named_like_the_metadata_file_is_kept_apart |
+| N10 | Nit | contract | R17's test accepts a refusal at start or a failure at run time; neither is pinned, and the link staying open after a zip refusal isn't checked | fixed: test pins the refusal at start with the link left open, and the run-time failure for the understated size; the worker re-checks every hostile zip (test_zips.py) |
+| N11 | Nit | contract | Defaults are 200 MiB and 2 GiB where the plan says 200 MB and 2 GB | accepted: the README gives the limits in MiB and GiB; only the plan says "MB" loosely |
+| N12 | Nit | contract | The purge test sees the hourly purge only while a job runs; "while idle" is never observed | fixed: test_results_store.py::test_the_timer_purges_while_no_job_runs |
+| N13 | Nit | contract | The copy fallback when `os.link` fails is never exercised | fixed: test_upload_jobs.py::test_images_are_copied_when_they_cant_be_linked |
+| N14 | Nit | contract | Natural order inside a zip (with `p10`) is tested only in the curl test, which is skipped without curl | fixed: test_upload_jobs.py::test_a_zip_is_unpacked now has p10 |
+| N15 | Nit | contract | `document=` doesn't honour the `hidden` flag that `upload_id` skips | fixed: `document=` refuses a hidden upload (ocr_service.py); test_upload_jobs.py::test_a_hidden_upload_is_no_input_by_id_either |
+| N16 | Nit | contract | A `document=` start can race the purge thread's keep set for a document already past retention; the job then fails cleanly | accepted: the same tiny window as round 1 N5, and the job fails cleanly |
+| N17 | Nit | contract | If `commit` fails on the second file of a request, the first stays stored while the route answers 500 | fixed: `_commit` removes the request's stored files if one fails (uploads.py); test_upload_routes.py::test_a_failed_store_keeps_none_of_the_requests_files |
+| N18 | Nit | contract | The browser form sends one request per file, so a start between two files takes a partial snapshot and closes the link | fixed: the form sends every chosen file in one request (upload_page.html); test_http_curl.py pins it |
+| N19 | Nit | contract | Unpacking a zip is timed as part of `checking pages` (same as round 1's N6) | accepted: round 1, N6 |
+| N20 | Nit | contract | `public_message` may miss a job-folder path spelled through a symlinked working folder; `scrub` still hides it | accepted: no server path leaks either way; `scrub` still hides it |
+| N21 | Nit | contract | The in-progress refusal test doesn't assert the link is still open right after the refusal | fixed: test_upload_jobs.py asserts the link is open after the refusal |
+
+Fixes in 932fb34, owner-approved (F1; N10, N12-N15, N17, N18, N21; N11, N16, N20 accepted). Each code fix's test fails when the fix is reverted; N10, N12-N14 and N21 added coverage for behaviour that was already right. Review rounds stop here, as the impl-review skill says.
+
+## 2026-11-21 · done · phase 02
+Gate passed: 15/15 tasks, impl review passed (round 2). Checks from a clean clone of 4e7c493: ruff, format, mypy, 262 tests, agent sync, gitleaks. No manual-check record: task 5.3 became an automated curl test (owner's decision, plan Decision log).
