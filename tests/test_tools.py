@@ -25,7 +25,14 @@ from scanscribe_mcp.service import ScanscribeMCPService
 
 from .fakes import FakeEngineFactory, make_images, make_pages
 
-PHASE_01_TOOLS = {"start_ocr_job", "get_ocr_job", "cancel_ocr_job", "get_ocr_result"}
+ALL_TOOLS = {
+    "start_ocr_job",
+    "get_ocr_job",
+    "cancel_ocr_job",
+    "get_ocr_result",
+    "create_upload_link",
+    "check_upload",
+}
 
 MakeClient = Callable[..., Any]
 
@@ -77,9 +84,9 @@ async def finish(client: Client[Any], job_id: str) -> dict[str, Any]:
 # --- 3.1 server, service, discovery ----------------------------------------------------------
 
 
-async def test_lists_exactly_the_phase_01_tools(make_client: MakeClient) -> None:
+async def test_lists_exactly_the_six_tools(make_client: MakeClient) -> None:
     client = await make_client()
-    assert {tool.name for tool in await client.list_tools()} == PHASE_01_TOOLS
+    assert {tool.name for tool in await client.list_tools()} == ALL_TOOLS
     instructions = client.instructions
     assert instructions is not None
     assert "start_ocr_job" in instructions and "get_ocr_result" in instructions

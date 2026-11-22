@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import io
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any
 import httpx
 from fastmcp import Client
 from mcp_service_kit import BaseServerConfig
+from PIL import Image
 from pydantic import SecretStr
 
 from scanscribe_mcp.config import AppConfig, ScanscribeMcpConfig
@@ -84,3 +86,29 @@ INITIALIZE = {
     },
 }
 MCP_HEADERS = {"Accept": "application/json, text/event-stream"}
+
+
+# --- multipart bodies, built by hand so a test can send them in chunks ---------------------
+
+BOUNDARY = "test-boundary-7f3a"
+CONTENT_TYPE = f"multipart/form-data; boundary={BOUNDARY}"
+
+
+def png(gray: int = 1) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (8, 8), (gray,) * 3).save(buffer, "PNG")
+    return buffer.getvalue()
+
+
+def multipart(*files: tuple[str, bytes], field: str = "file") -> bytes:
+    body = b""
+    for name, data in files:
+        body += (
+            (
+                f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="{field}"; '
+                f'filename="{name}"\r\nContent-Type: application/octet-stream\r\n\r\n'
+            ).encode()
+            + data
+            + b"\r\n"
+        )
+    return body + f"--{BOUNDARY}--\r\n".encode()

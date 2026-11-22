@@ -59,7 +59,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   (404), a 250 MB declared length and an over-limit stream (413, nothing stored), an empty file
   (400), a name with `../` stored as a plain name, and an upload that began before expiry
   finishing after it.
-- [ ] 3.3 Add `features/create_upload_link/tool.py` and `features/check_upload/tool.py`, with
+- [x] 3.3 Add `features/create_upload_link/tool.py` and `features/check_upload/tool.py`, with
   `wait_s` (D7, R15). Verify: client tests for the link, the curl command text, `check_upload`
   before and after an upload, and both tools over stdio returning "needs the HTTP server".
 

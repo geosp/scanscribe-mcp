@@ -5,41 +5,17 @@ R15, R16, R29.
 
 from __future__ import annotations
 
-import io
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any
 
 import httpx
-from PIL import Image
 
 from scanscribe_mcp.uploads import UploadLinks
 
-from .http_helpers import HttpServer, http_server
+from .http_helpers import CONTENT_TYPE, HttpServer, http_server, multipart, png
 
-BOUNDARY = "test-boundary-7f3a"
-CONTENT_TYPE = f"multipart/form-data; boundary={BOUNDARY}"
 MB = 1024 * 1024
-
-
-def png(gray: int = 1) -> bytes:
-    buffer = io.BytesIO()
-    Image.new("RGB", (8, 8), (gray,) * 3).save(buffer, "PNG")
-    return buffer.getvalue()
-
-
-def multipart(*files: tuple[str, bytes], field: str = "file") -> bytes:
-    body = b""
-    for name, data in files:
-        body += (
-            (
-                f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="{field}"; '
-                f'filename="{name}"\r\nContent-Type: application/octet-stream\r\n\r\n'
-            ).encode()
-            + data
-            + b"\r\n"
-        )
-    return body + f"--{BOUNDARY}--\r\n".encode()
 
 
 async def new_link(s: HttpServer, max_files: int = 5) -> tuple[str, str]:
