@@ -271,11 +271,12 @@ job's dpi must fail the job before the pre-check.
 
 ### R28 · A hung page doesn't block the server for ever
 
-A page that takes longer than `SCANSCRIBE_MCP_PAGE_TIMEOUT_S` (default 600 s) must fail its job,
-and the jobs still queued fail with a message asking for a restart, because the stuck worker
+A page that takes longer than `SCANSCRIBE_MCP_PAGE_TIMEOUT_S` (default 600 s), counted from
+when the job reaches it until the next page is ready, must fail its job; so must a `checking pages`
+step that takes longer than that. The jobs still queued fail with a message asking for a restart, because the stuck worker
 would never run them. Over HTTP the process then exits, so its supervisor restarts it; over stdio
 new jobs are refused with a message asking for a restart.
-- **Given** a fake engine that blocks on page 2 past the timeout, **when** the watchdog fires, **then** the job is `failed` naming the timeout, any queued job is `failed` asking for a restart, and the server exits (HTTP) or refuses new jobs (stdio).
+- **Given** a fake engine that blocks on page 2 past the timeout, or a page 1 render or a pre-check that blocks past it, **when** the watchdog fires, **then** the job is `failed` naming the timeout, any queued job is `failed` asking for a restart, and the server exits (HTTP) or refuses new jobs (stdio).
 
 ### R29 · Uploads are complete and uniquely named before a job starts
 
@@ -299,7 +300,8 @@ would break with the pattern the owner maintains in pandoc-mcp). Details: notes.
 A single daemon thread takes jobs from a `queue.Queue`, so OCR never runs twice at once (R5) and
 never blocks the event loop. The job table, under a lock, holds each job's state; R6 counts its
 `queued` jobs after expiry, and the worker skips cancelled or expired entries. A watchdog thread
-checks the current page's age for R28; when it fires, it also fails the queued jobs. Each job runs inside a catch-all (R26).
+checks the age of the current page, or of the `checking pages` step, for R28; the engine load
+isn't timed (a first run downloads models). When it fires, it also fails the queued jobs. Each job runs inside a catch-all (R26).
 Rejected: `asyncio.to_thread` per job (needs its own lock to serialize); a process pool (a second
 engine and GPU context per process).
 
@@ -462,4 +464,7 @@ unwanted.
   reach stdout at shutdown, so the worker now redirects `sys.stdout` to stderr for each job.
   R28 and D2: queued jobs fail when the watchdog fires. Assumptions: `output_path` with a page
   range, and a page longer than the inline limit. Owner's decision; design review round 3 due.
+- 2026-11-21 · R28 and D2 changed after phase 01's impl review (finding I1): the watchdog also
+  times page 1's render and the `checking pages` step. Owner's decision; re-checked by impl review
+  round 2 (contract lens), as the `small` profile asks.
 

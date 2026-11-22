@@ -65,10 +65,12 @@ slices or into a local file. Every test runs on the base install with a fake eng
   job over a file named `chapter-3.pdf` and finds neither the name, the error message nor any fake
   OCR text; an unreadable page's error names the page as the caller gave it; a fake
   `RuntimeError` whose text holds a temp path gives "OCR failed (RuntimeError)".
-- [x] 2.5 Add the page watchdog: a thread that fails the job when the current page passes
+- [x] 2.5 Add the page watchdog: a thread that fails the job when the current page (from when
+  the job reaches it until the next page is ready) or the `checking pages` step passes
   `PAGE_TIMEOUT_S`, then puts the service in a stuck state in which `start_ocr_job` returns
   "restart the server" (D2, R28). Verify: with an injected clock and a fake engine that blocks
-  on page 2, the job becomes `failed` naming the timeout, a queued job becomes `failed` asking
+  on page 2, a page 1 render that blocks, or a pre-check that blocks, the job becomes `failed`
+  naming the timeout, a queued job becomes `failed` asking
   for a restart, and a new start is refused.
 
 ### 3. Tools
