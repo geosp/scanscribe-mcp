@@ -25,10 +25,13 @@ uploads, then a Docker image for an NVIDIA GPU. Main risks: hostile uploads such
 huge PDF pages (R17, R27), book material or server paths in logs and errors (R22, R23), a page
 that hangs the worker (R28), and an image that can't see the GPU (phase 03's manual check).
 
-```text
-agent ──start_ocr_job──▶ tool ──▶ OcrService ──queue──▶ worker thread ──▶ scanscribe
-      ◀─get_ocr_job (state, step, page n/total, device)  (one engine, one job at a time)
-      ◀─get_ocr_result (text or slice, id, URL) ◀── document store ◀──┘
+```mermaid
+flowchart LR
+    agent["agent"] -- "start_ocr_job" --> tool["tool"] --> ocr["OcrService"]
+    ocr -- "queue" --> worker["worker thread: one engine, one job at a time"] --> scanscribe["scanscribe"]
+    worker --> store["document store"]
+    ocr -. "get_ocr_job: state, step, page n/total, device" .-> agent
+    store -. "get_ocr_result: text or slice, id, URL" .-> agent
 ```
 
 ## Why
@@ -481,3 +484,6 @@ unwanted.
   OpenCV that PaddleX imports needs, so the image installs `libgl1` and `libglib2.0-0` as well.
   Then the job ran on `gpu:0`, and PaddleX wrote its models under `PADDLE_PDX_CACHE_HOME`
   (`/cache/paddlex`, 133 MB), with no `~/.paddlex`: the assumption holds, and D9 stands.
+- 2026-11-22 · Task 03/2.4 added at the owner's request: every diagram in the project's documents
+  is drawn in Mermaid, and AGENTS.md says so for new ones. Folder listings stay text, and raw
+  review reports stay verbatim. No requirement or decision changes.

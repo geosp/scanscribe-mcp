@@ -4,13 +4,16 @@ scanscribe-mcp wraps [scanscribe](https://github.com/geosp/scanscribe)'s public 
 
 ## Layers
 
-```text
-MCP client ──▶ FastMCP (kit) ──▶ features/<tool>/tool.py ──▶ OcrService ──▶ JobTable
-   (bearer token on /mcp over HTTP)                               │
-                                                     worker thread ┼─▶ scanscribe
-                                                     watchdog thread
-uploader ──▶ /upload/<token> ──▶ UploadReceiver ──▶ DocumentStore ◀── purge thread (HTTP)
-downloader ──▶ /documents/<id>/<name> ─────────────────┘
+```mermaid
+flowchart LR
+    client["MCP client"] -- "/mcp, bearer token over HTTP" --> kit["FastMCP (kit)"]
+    kit --> tools["features/&lt;tool&gt;/tool.py"] --> ocr["OcrService"] --> table["JobTable"]
+    ocr --> worker["worker thread"] --> scanscribe["scanscribe"]
+    ocr --> watchdog["watchdog thread"]
+    worker -- "results over HTTP" --> store["DocumentStore"]
+    uploader["uploader"] -- "/upload/&lt;token&gt;" --> receiver["UploadReceiver"] --> store
+    purge["purge thread (HTTP)"] --> store
+    downloader["downloader"] -- "/documents/&lt;id&gt;/&lt;name&gt;" --> store
 ```
 
 In Docker (phase 03), the same process runs in one container on the GPU host:
@@ -90,12 +93,19 @@ The worker can't be killed, and the engine may still be busy with the page. If i
 
 ## Uploads
 
-```text
-agent ──create_upload_link──▶ server        (over /mcp, with the bearer token)
-      ◀── /upload/<token> link, upload_id
-user or shell ──POST /upload/<token>──▶ server ──▶ document store
-              ◀── names, sizes, remaining (no ids)
-agent ──check_upload(upload_id) / start_ocr_job(upload_id)──▶ server
+```mermaid
+sequenceDiagram
+    participant A as agent (MCP client)
+    participant S as server
+    participant D as document store
+    participant U as user or shell
+    A->>S: create_upload_link (over /mcp, with the bearer token)
+    S-->>A: the /upload/#lt;token#gt; link and an upload_id
+    A->>U: the link, or a curl command
+    U->>S: POST /upload/#lt;token#gt; with the files
+    S->>D: store the files
+    S-->>U: names, sizes, remaining (no ids)
+    A->>S: check_upload(upload_id), then start_ocr_job(upload_id)
 ```
 
 The link is the only upload credential: `secrets.token_urlsafe(32)`, kept as a sha256 hash in memory. It takes `max_files` files (at most 200) and `MAX_UPLOAD_BYTES` in all, and accepts new uploads for `UPLOAD_LINK_TTL_S`. The link is checked when an upload starts, so an upload that began in time may end later; uploads in progress count against the link's files and bytes. The non-secret `upload_id`, which only the MCP caller gets, lists the files and starts the job, so an uploader never learns the document ids. A restart closes every link.

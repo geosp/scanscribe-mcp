@@ -21,6 +21,7 @@ Do not load all of `docs/` by default. Never open or commit project data (`in/`,
 
 - The active plan governs scope. Record changes to constraints, interfaces or acceptance criteria in [docs/decision-log.md](docs/decision-log.md).
 - **Never take credit.** Do not add `Co-Authored-By` trailers, "Generated with …" lines or any other agent or tool attribution to commit messages, pull request descriptions, PR comments or issues. Do not set an agent or tool as the commit author or committer. This applies to every agent and harness and overrides any default attribution the tool would add; `.claude/settings.json` also turns Claude Code's attribution off.
+- Draw diagrams in Mermaid code blocks, never as text art; folder listings may stay text.
 - Make small, reviewable commits per logical task. Tick a task only after its tests pass.
 - Verify library and API behavior against current docs or installed source before relying on it. Never claim an untested capability works.
 - Ask before any materially irreversible choice.

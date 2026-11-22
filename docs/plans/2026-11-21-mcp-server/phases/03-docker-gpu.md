@@ -48,11 +48,16 @@ it.
   `cp .env.example .env`, `docker compose up -d --build`, `claude mcp add --transport http`, what
   the volumes hold, and how a restart recovers a hung job. Verify: the link checker passes; the
   commands match the compose file.
-- [ ] 2.2 Update the architecture diagram in `docs/ARCHITECTURE.md` with the container, the two
+- [x] 2.2 Update the architecture diagram in `docs/ARCHITECTURE.md` with the container, the two
   volumes and the GPU. Verify: the Mermaid block renders on GitHub.
 - [x] 2.3 Add the Docker interface to `docs/decision-log.md` (image, port 8302, volumes) and
   leave the AGENTS.md Status line for `impl-plan close` to update. Verify: the decision log lists
   them; `uv run .agents/sync_agents.py --check` passes.
+- [ ] 2.4 Draw every diagram in the project's documents in Mermaid (owner's request, plan
+  Decision log): the layer diagram and the upload sequence in `docs/ARCHITECTURE.md`, and the
+  Summary sketch in `plan.md`. Folder listings stay text; raw review reports stay verbatim. Add
+  the rule to `AGENTS.md` and `docs/decision-log.md`. Verify: no text-drawn diagram is left in a
+  tracked Markdown file, and every Mermaid block renders on GitHub.
 
 ### 3. Manual GPU check
 
