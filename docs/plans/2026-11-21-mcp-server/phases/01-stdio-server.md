@@ -72,23 +72,23 @@ slices or into a local file. Every test runs on the base install with a fake eng
 
 ### 3. Tools
 
-- [ ] 3.1 Add `server.py`, `service.py` and `results.py` on the kit: instructions text, tool
+- [x] 3.1 Add `server.py`, `service.py` and `results.py` on the kit: instructions text, tool
   discovery from `features/*/tool.py`, worker start in `initialize()` and stop in `cleanup()`,
   `tool_errors()` (D1). Verify: a `fastmcp.Client` test lists exactly the phase 01 tools and
   reads the instructions.
-- [ ] 3.2 Add `features/start_ocr_job/tool.py`: exactly one input (only `input_path` works in this
+- [x] 3.2 Add `features/start_ocr_job/tool.py`: exactly one input (only `input_path` works in this
   phase; the others return "needs the HTTP server"), `lang`, `dpi`, `columns`, option checks, an
   `input_path` folder counted from file names, and the job id and state in the reply (R1, R2,
   R3, R4, R6, D5). Verify: client tests for no input, two inputs, a bad lang, `dpi: 600`,
   `columns: 9`, the 200 dpi and 1 column defaults, a 501-image folder, a full queue, and
   `input_path` with `ALLOW_LOCAL_PATHS=false` returning an error that names that setting.
-- [ ] 3.3 Add `features/get_ocr_job/tool.py` with `wait_s` 0–60 polling every 0.5 s (R8, R9).
+- [x] 3.3 Add `features/get_ocr_job/tool.py` with `wait_s` 0–60 polling every 0.5 s (R8, R9).
   Verify: a client test where a fake job finishes after ~1 s and `wait_s=30` returns in under
   3 s with `succeeded`, page total and device; a running job reports its step and seconds on
   the current page; an unknown id is a tool error.
-- [ ] 3.4 Add `features/cancel_ocr_job/tool.py` (R10). Verify: client tests for queued, running
+- [x] 3.4 Add `features/cancel_ocr_job/tool.py` (R10). Verify: client tests for queued, running
   and finished jobs.
-- [ ] 3.5 Add `features/get_ocr_result/tool.py`: inline text up to `MAX_INLINE_CHARS`,
+- [x] 3.5 Add `features/get_ocr_result/tool.py`: inline text up to `MAX_INLINE_CHARS`,
   `first_page` / `last_page` slices, and `output_path` when local paths are allowed (R2, R13,
   R14). Verify: client tests for a small result inline, a large one not inline with a page
   count, a slice of pages 10–12 with their markers, a slice longer than the limit cut at a page
