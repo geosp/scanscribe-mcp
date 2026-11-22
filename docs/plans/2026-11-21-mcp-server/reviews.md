@@ -102,8 +102,13 @@ Reviewers: codebase fit ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/design-
 
 | ID | Sev | Lens | Finding | Resolution |
 | --- | --- | --- | --- | --- |
-| H1 | Major | codebase fit | No phase 01 task adds D10's per-job `redirect_stdout`; task 2.2 is ticked without it | open |
-| H2 | Nit | codebase fit | Task 2.5 and 3.5 Verify lines don't cover queued jobs failing, `output_path` with a range, or a page over the inline limit; no tests for the last two | open |
-| H3 | Nit | codebase fit | Phases table shows phase 01 as 0/16 | open |
-| H4 | Nit | codebase fit | Phase 01 branch `docs/plan-mcp-server` doesn't follow `<type>/<issue>-<slug>` | open |
-| H5 | Nit | codebase fit | notes.md#d10 credits fastmcp with the fd-1 diversion; it is in `mcp` (2.3.0) | open |
+| H1 | Major | codebase fit | No phase 01 task adds D10's per-job `redirect_stdout`; task 2.2 is ticked without it | fixed: task 01/4.2 |
+| H2 | Nit | codebase fit | Task 2.5 and 3.5 Verify lines don't cover queued jobs failing, `output_path` with a range, or a page over the inline limit; no tests for the last two | fixed: tasks 01/2.5, 01/3.5 (3.5 unticked until its tests pass) |
+| H3 | Nit | codebase fit | Phases table shows phase 01 as 0/16 | fixed: Phases table |
+| H4 | Nit | codebase fit | Phase 01 branch `docs/plan-mcp-server` doesn't follow `<type>/<issue>-<slug>` | accepted: owner's choice at `start` |
+| H5 | Nit | codebase fit | notes.md#d10 credits fastmcp with the fd-1 diversion; it is in `mcp` (2.3.0) | fixed: notes.md#d10 |
+
+Fixes applied 2026-11-21 (owner's choice): H1 fixed, H4 accepted, the other Nits fixed. Every reviewer completed and no Major is open. Status: passed.
+
+## 2026-11-21 · approved · plan and phases 01–03 (after round 3)
+Re-approved by the owner after the D10 / R28 update passed design review round 3.

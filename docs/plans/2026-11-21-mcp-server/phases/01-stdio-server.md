@@ -5,7 +5,7 @@ status: in-progress
 branch: docs/plan-mcp-server
 base: 34a1a04be3f342a60a2ab38e6dccad3b6c06cbac
 delivers: [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R21, R22, R24, R26, R27, R28]
-design_review: { status: changes-requested, rounds: 3, last: 2026-11-21 }
+design_review: { status: passed, rounds: 3, last: 2026-11-21 }
 impl_review: { status: none, rounds: 0, last: null }
 approved: 2026-11-21
 ---
@@ -68,7 +68,8 @@ slices or into a local file. Every test runs on the base install with a fake eng
 - [x] 2.5 Add the page watchdog: a thread that fails the job when the current page passes
   `PAGE_TIMEOUT_S`, then puts the service in a stuck state in which `start_ocr_job` returns
   "restart the server" (D2, R28). Verify: with an injected clock and a fake engine that blocks
-  on page 2, the job becomes `failed` naming the timeout and a new start is refused.
+  on page 2, the job becomes `failed` naming the timeout, a queued job becomes `failed` asking
+  for a restart, and a new start is refused.
 
 ### 3. Tools
 
@@ -88,13 +89,15 @@ slices or into a local file. Every test runs on the base install with a fake eng
   the current page; an unknown id is a tool error.
 - [x] 3.4 Add `features/cancel_ocr_job/tool.py` (R10). Verify: client tests for queued, running
   and finished jobs.
-- [x] 3.5 Add `features/get_ocr_result/tool.py`: inline text up to `MAX_INLINE_CHARS`,
+- [ ] 3.5 Add `features/get_ocr_result/tool.py`: inline text up to `MAX_INLINE_CHARS`,
   `first_page` / `last_page` slices, and `output_path` when local paths are allowed (R2, R13,
   R14). Verify: client tests for a small result inline, a large one not inline with a page
   count, a slice of pages 10–12 with their markers, a slice longer than the limit cut at a page
   with the next `first_page` named, an out-of-range slice as a tool error, an absolute
   `output_path` writing the exact text, a relative path and a missing parent refused, and
-  `output_path` with local paths turned off refused.
+  `output_path` with local paths turned off refused; `output_path` with `first_page` or
+  `last_page` refused, and a slice whose first page alone exceeds the limit returning no text
+  (Assumptions).
 
 ### 4. End to end and documentation
 
@@ -102,8 +105,9 @@ slices or into a local file. Every test runs on the base install with a fake eng
   and `paddleocr` were never imported; generate small fixture images and PDFs in the tests (no
   book material) (R24). Verify: `uv run pytest` passes on the base install, and the check fails
   when a test puts a stub module named `paddle` into `sys.modules` on purpose.
-- [ ] 4.2 Add `tests/stdio_launcher.py`, which builds the server with the fake engine factory and
-  runs it over stdio, and a subprocess test that runs a job through it and parses every stdout
+- [ ] 4.2 Run each job in the worker inside `contextlib.redirect_stdout(sys.stderr)` (D10). Add
+  `tests/stdio_launcher.py`, which builds the server with the fake engine factory and runs it over
+  stdio, and a subprocess test that runs a job through it and parses every stdout
   line as MCP; the fake engine prints to stdout while recognizing (D3, D10, R21). Verify: the
   test passes, and a variant of the launcher that prints one line before the server starts
   makes it fail.

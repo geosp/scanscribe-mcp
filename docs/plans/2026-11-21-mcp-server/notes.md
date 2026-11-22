@@ -148,7 +148,8 @@ Pages then follow scanscribe's natural order, because the folder goes through `o
 ## D10 · Why the engine's stdout swap can't corrupt stdio
 
 fastmcp 4.2.4 (the version the kit's `fastmcp>=4.1.3` resolves to today) serves stdio through
-`mcp.server.stdio.stdio_server`. Its docstring and code: "While serving, fd 0 points at the null
+`mcp.server.stdio.stdio_server`, from the `mcp` package (2.3.0 here; fastmcp 4.2.4 requires
+`mcp>=2.3.0`), which is where the descriptor diversion lives. Its docstring and code: "While serving, fd 0 points at the null
 device and fd 1 at stderr, so handlers and children read EOF and their stray output misses the
 wire." It writes the protocol through its own wrapper of the original descriptor, so
 `contextlib.redirect_stdout(sys.stderr)` inside scanscribe's engine only changes the Python
