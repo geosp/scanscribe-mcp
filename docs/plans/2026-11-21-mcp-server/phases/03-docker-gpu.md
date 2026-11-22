@@ -56,7 +56,7 @@ it.
 
 ### 3. Manual GPU check
 
-- [ ] 3.1 On the owner's GPU host, with `SCANSCRIBE_MCP_LANGS=en,fr`, start the stack, upload a
+- [x] 3.1 On the owner's GPU host, with `SCANSCRIBE_MCP_LANGS=en,fr`, start the stack, upload a
   self-made PDF of about 10 pages, run a job, then `docker compose up -d --force-recreate` and
   run it again; then run one `fr` job and one `en` job (R25, R11). Record the device, run times,
   whether a download happened on the second run, whether the first result still downloads, GPU
@@ -64,7 +64,7 @@ it.
   `docs/demos/<date>-docker-gpu-check/README.md`.
   Verify: the record shows `gpu:0`, no second download, the first result still downloadable,
   and identical text on both runs.
-- [ ] 3.2 Run the test suite inside the image with dev dependencies, in a throwaway container:
+- [x] 3.2 Run the test suite inside the image with dev dependencies, in a throwaway container:
   `docker run --rm --user 0 -v $PWD/tests:/app/tests:ro -v $PWD/.github:/app/.github:ro <image>
   sh -c 'uv sync --frozen --extra gpu -q && uv run --frozen pytest -q -p no:cacheprovider'`. Here PaddlePaddle is installed, so
   R24's no-import check is meaningful. Verify: the command and its pass count are in the check
