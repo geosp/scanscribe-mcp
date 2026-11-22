@@ -44,14 +44,14 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
                 raise ToolError(
                     "output_path writes the whole text; leave out first_page and last_page"
                 )
-            with tool_errors():
+            with tool_errors("get_ocr_result"):
                 path, chars = ocr.write_result(job_id, output_path)
                 total = len(ocr.succeeded_pages(job_id))
             return reply(
                 [f"Wrote {total} pages ({chars} characters) to {path}."],
                 {"job_id": job_id, "output_path": str(path), "pages": total, "chars": chars},
             )
-        with tool_errors():
+        with tool_errors("get_ocr_result"):
             result = ocr.result(job_id, first_page, last_page)
         limit = ocr.config.max_inline_chars
         structured: dict[str, Any] = {

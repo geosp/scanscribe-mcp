@@ -6,6 +6,7 @@ R1-R4, R6, R8-R10, R13, R14.
 from __future__ import annotations
 
 import asyncio
+import logging
 import threading
 import time
 from collections.abc import AsyncIterator, Callable
@@ -456,3 +457,21 @@ async def test_page_longer_than_the_limit_returns_no_text(
     assert "output_path" in result.content[0].text
     fields = result.structured_content
     assert fields["inline"] is False and fields["next_first_page"] == 2
+
+
+async def test_unexpected_tool_error_hides_the_path_from_logs_and_client(
+    make_client: MakeClient, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+    loop = tmp_path / "chapter-3.pdf"
+    loop.symlink_to(loop)  # resolve() raises RuntimeError("Symlink loop from ...")
+    client = await make_client()
+    with pytest.raises(ToolError) as raised:
+        await start(client, input_path=str(loop))
+    assert "chapter-3" not in str(raised.value) and str(tmp_path) not in str(raised.value)
+    assert "start_ocr_job failed (RuntimeError)" in str(raised.value)
+    for record in caplog.records:
+        text = f"{record.getMessage()} {record.exc_text or ''}"
+        if record.exc_info and not record.exc_text:
+            text += logging.Formatter().formatException(record.exc_info)
+        assert "chapter-3" not in text, record.name

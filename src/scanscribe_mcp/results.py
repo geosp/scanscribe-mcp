@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -12,18 +13,26 @@ from mcp_types import TextContent
 
 from .jobs import Job, JobState
 
+logger = logging.getLogger(__name__)
+
 
 @contextmanager
-def tool_errors() -> Iterator[None]:
+def tool_errors(tool: str) -> Iterator[None]:
     """Report a caller's mistake to the client as a tool error.
 
     The service raises ValueError only with messages meant for the caller, which never hold
-    server paths (D11).
+    server paths (D11). Any other exception becomes "<tool> failed (<class>)" and is logged by
+    class only: its text, or a traceback fastmcp would log, may hold a path (R22).
     """
     try:
         yield
+    except ToolError:
+        raise
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
+    except Exception as exc:
+        logger.warning("tool %s failed (%s)", tool, type(exc).__name__)
+        raise ToolError(f"{tool} failed ({type(exc).__name__})") from None
 
 
 def job_fields(job: Job, now: float) -> dict[str, Any]:

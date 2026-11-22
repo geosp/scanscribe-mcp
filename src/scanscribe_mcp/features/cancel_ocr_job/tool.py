@@ -24,7 +24,7 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
         A job that has already finished keeps its state. Check a running job with get_ocr_job
         until it reports cancelled.
         """
-        with tool_errors():
+        with tool_errors("cancel_ocr_job"):
             job, changed = ocr.cancel_job(job_id)
         fields = job_fields(job, ocr.clock())
         fields["cancel_requested"] = changed

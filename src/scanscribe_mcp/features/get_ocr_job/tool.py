@@ -38,7 +38,7 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + wait_s
         while True:
-            with tool_errors():
+            with tool_errors("get_ocr_job"):
                 job = ocr.get_job(job_id)
             remaining = deadline - loop.time()
             if job.is_final or remaining <= 0:

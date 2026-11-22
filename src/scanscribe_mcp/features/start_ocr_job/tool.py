@@ -47,7 +47,7 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
         order. Follow the job with get_ocr_job(job_id, wait_s=60), then fetch the text with
         get_ocr_result(job_id).
         """
-        with tool_errors():
+        with tool_errors("start_ocr_job"):
             job = ocr.start_job(
                 input_path=input_path,
                 upload_id=upload_id,
