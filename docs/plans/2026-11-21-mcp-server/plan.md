@@ -477,3 +477,7 @@ unwanted.
   loads, so the image also installs Debian's `libgomp1`. With it, `paddle.utils.run_check()` passes
   on the GPU inside the container, so D9 stands and the `nvidia/cuda` fallback isn't needed. The
   assumption that the cu126 wheels need only the host driver holds once that one library is there.
+- 2026-11-22 · Task 03/1.3: the first job in the container also failed on `libGL.so.1`, which the
+  OpenCV that PaddleX imports needs, so the image installs `libgl1` and `libglib2.0-0` as well.
+  Then the job ran on `gpu:0`, and PaddleX wrote its models under `PADDLE_PDX_CACHE_HOME`
+  (`/cache/paddlex`, 133 MB), with no `~/.paddlex`: the assumption holds, and D9 stands.

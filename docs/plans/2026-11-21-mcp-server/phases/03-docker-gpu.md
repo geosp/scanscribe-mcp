@@ -37,7 +37,7 @@ it.
   the build context (D9, R25, R28). Verify:
   `docker compose config` is valid and fails without `SCANSCRIBE_MCP_TOKEN`; the build context
   contains none of the ignored paths.
-- [ ] 1.3 Check that PaddleX writes its models under `PADDLE_PDX_CACHE_HOME` (assumption in
+- [x] 1.3 Check that PaddleX writes its models under `PADDLE_PDX_CACHE_HOME` (assumption in
   plan.md). Verify: after the first job, `/cache/paddlex` in the volume holds the models and
   `~/.paddlex` in the container is empty or absent. If not, switch to the variable PaddleX
   actually reads and log a Decision log line.

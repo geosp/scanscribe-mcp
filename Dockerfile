@@ -11,10 +11,11 @@ FROM ghcr.io/astral-sh/uv@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302b
 # python:3.12-slim
 FROM python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
-# git fetches the Git dependencies (scanscribe, mcp-service-kit) at their pinned tags; libgomp1
-# is the OpenMP runtime PaddlePaddle loads, which the slim image lacks.
+# git fetches the Git dependencies (scanscribe, mcp-service-kit) at their pinned tags. The slim
+# image lacks three runtime libraries the OCR engine loads: libgomp1 (OpenMP, for PaddlePaddle),
+# and libgl1 and libglib2.0-0 (for the OpenCV that PaddleX imports).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git libgomp1 \
+    && apt-get install -y --no-install-recommends git libgomp1 libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=uv /uv /usr/local/bin/uv
