@@ -112,3 +112,36 @@ def multipart(*files: tuple[str, bytes], field: str = "file") -> bytes:
             + b"\r\n"
         )
     return body + f"--{BOUNDARY}--\r\n".encode()
+
+
+# --- uploads and jobs through the tools ----------------------------------------------------
+
+
+async def new_link(s: HttpServer, max_files: int = 20) -> tuple[str, str]:
+    result = await s.mcp.call_tool("create_upload_link", {"max_files": max_files})
+    fields = result.structured_content
+    return s.path(fields["upload_url"]), fields["upload_id"]
+
+
+async def post(s: HttpServer, url: str, *files: tuple[str, bytes]) -> int:
+    headers = {"Content-Type": CONTENT_TYPE}
+    response = await s.http.post(url, content=multipart(*files), headers=headers)
+    return response.status_code
+
+
+async def send(s: HttpServer, url: str, *files: tuple[str, bytes]) -> None:
+    assert await post(s, url, *files) == 200
+
+
+async def upload(s: HttpServer, *files: tuple[str, bytes]) -> str:
+    url, upload_id = await new_link(s)
+    await send(s, url, *files)
+    return upload_id
+
+
+async def run_job(s: HttpServer, **arguments: Any) -> dict[str, Any]:
+    started = await s.mcp.call_tool("start_ocr_job", arguments)
+    job_id = started.structured_content["job_id"]
+    done = await s.mcp.call_tool("get_ocr_job", {"job_id": job_id, "wait_s": 30})
+    fields: dict[str, Any] = {**done.structured_content, "start": started.structured_content}
+    return fields

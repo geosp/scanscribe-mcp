@@ -9,7 +9,6 @@ import io
 import threading
 import zipfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -19,35 +18,17 @@ from scanscribe_mcp.jobs import Step
 from scanscribe_mcp.service import ScanscribeMCPService
 
 from .fakes import FakeEngineFactory, make_pdf
-from .http_helpers import CONTENT_TYPE, HttpServer, http_config, http_server, multipart, png
+from .http_helpers import (
+    http_config,
+    http_server,
+    new_link,
+    png,
+    post,
+    run_job,
+    send,
+    upload,
+)
 from .service_helpers import wait_until
-
-
-async def new_link(s: HttpServer, max_files: int = 20) -> tuple[str, str]:
-    result = await s.mcp.call_tool("create_upload_link", {"max_files": max_files})
-    fields = result.structured_content
-    return s.path(fields["upload_url"]), fields["upload_id"]
-
-
-async def send(s: HttpServer, url: str, *files: tuple[str, bytes]) -> None:
-    response = await s.http.post(
-        url, content=multipart(*files), headers={"Content-Type": CONTENT_TYPE}
-    )
-    assert response.status_code == 200, response.text
-
-
-async def upload(s: HttpServer, *files: tuple[str, bytes]) -> str:
-    url, upload_id = await new_link(s)
-    await send(s, url, *files)
-    return upload_id
-
-
-async def run_job(s: HttpServer, **arguments: Any) -> dict[str, Any]:
-    started = await s.mcp.call_tool("start_ocr_job", arguments)
-    job_id = started.structured_content["job_id"]
-    done = await s.mcp.call_tool("get_ocr_job", {"job_id": job_id, "wait_s": 30})
-    fields: dict[str, Any] = {**done.structured_content, "start": started.structured_content}
-    return fields
 
 
 def pdf_bytes(tmp_path: Path, pages: int) -> bytes:
@@ -148,10 +129,7 @@ async def test_a_job_closes_the_link_and_a_second_start_reuses_its_files(tmp_pat
         await send(s, url, ("p1.png", png(1)), ("p2.png", png(2)))
         first = await run_job(s, upload_id=upload_id)
         assert first["state"] == "succeeded"
-        response = await s.http.post(
-            url, content=multipart(("p3.png", png(3))), headers={"Content-Type": CONTENT_TYPE}
-        )
-        assert response.status_code == 404
+        assert await post(s, url, ("p3.png", png(3))) == 404
         checked = await s.mcp.call_tool("check_upload", {"upload_id": upload_id})
         assert checked.structured_content["closed"] is True
         second = await run_job(s, upload_id=upload_id, dpi=300)

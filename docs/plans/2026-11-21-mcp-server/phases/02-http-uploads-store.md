@@ -75,7 +75,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   same `upload_id` reusing the snapshot; natural order (`p1`, `p2`, `p10`) seen by the fake
   engine; no job folder left after success, failure or cancel; a stale job-id folder removed and
   a non-job file kept at start-up; a second server on the same `WORK_DIR` refusing to start.
-- [ ] 4.2 Add the zip checks and streaming extraction from notes.md#d7 (R17). Verify: tests that
+- [x] 4.2 Add the zip checks and streaming extraction from notes.md#d7 (R17). Verify: tests that
   build zips in memory with `../x.png`, `/x.png`, a symlink entry, a nested zip, `a/1.png` with
   `b/1.png`, and a header that understates its size each fail before OCR with nothing outside the
   job folder; `chapter/p1.png` is accepted as `p1.png`; `__MACOSX/` entries are skipped.
