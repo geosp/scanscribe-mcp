@@ -65,7 +65,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
 
 ### 4. Jobs from uploads and documents
 
-- [ ] 4.1 At `start_ocr_job`, refuse while an upload is in progress or when two images reduce to
+- [x] 4.1 At `start_ocr_job`, refuse while an upload is in progress or when two images reduce to
   one name; once the job is created, snapshot the files and close the link. In the worker, build
   `WORK_DIR/<job id>/pages/` from images or a zip, or use a stored PDF in place, and delete the
   folder when the job ends. At start-up, take the `WORK_DIR` lock and delete only entries named

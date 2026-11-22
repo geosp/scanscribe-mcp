@@ -64,6 +64,8 @@ class JobInput:
     size: int | None = None
     page_count: int | None = None
     documents: tuple[str, ...] = ()
+    files: tuple[str, ...] = ()
+    """The uploaded file names the job took, for the caller's reply only (never logged)."""
 
 
 @dataclass
@@ -123,8 +125,9 @@ class JobTable:
 
     # --- used by the tools -------------------------------------------------------------------
 
-    def submit(self, job_input: JobInput, options: OcrOptions) -> Job:
-        """Create a queued job and put it at the end of the queue (R5, R6)."""
+    def submit(self, job_input: JobInput, options: OcrOptions, job_id: str | None = None) -> Job:
+        """Create a queued job and put it at the end of the queue (R5, R6). `job_id` lets the
+        caller name the job folder in its input before the job exists."""
         with self._lock:
             self._refresh()
             queued = sum(1 for job in self._jobs.values() if job.state is JobState.QUEUED)
@@ -132,7 +135,9 @@ class JobTable:
                 raise QueueFullError(
                     f"the queue is full ({self.max_queued} jobs waiting); try again later"
                 )
-            job = Job(id=new_job_id(), input=job_input, options=options, created=self.clock())
+            job = Job(
+                id=job_id or new_job_id(), input=job_input, options=options, created=self.clock()
+            )
             self._jobs[job.id] = job
             self._queue.put(job.id)
             return dataclasses.replace(job)

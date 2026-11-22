@@ -28,7 +28,7 @@ from starlette.responses import (
 from .config import AppConfig
 from .documents import DocumentStore
 from .ocr_service import EngineFactory, OcrService
-from .uploads import UploadError, UploadLinks, UploadReceiver
+from .uploads import UploadError, UploadLinks, UploadReceiver, WorkDir
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +54,19 @@ class ScanscribeMCPService(BaseService):
         self.config = config
         self.engine_factory: EngineFactory = engine_factory or scanscribe.load_engine
         self.ocr: OcrService | None = None
+        self.work_dir: WorkDir | None = None
 
     def initialize(self) -> None:
         if self.ocr is not None:
             return
-        store = uploads = None
+        store = uploads = work_dir = None
         ocr = self.config.ocr
         if self.config.server.transport == "http":
+            work_dir = WorkDir(ocr.work_dir)
+            removed = work_dir.acquire()  # refuses to start if another server holds it (D12)
+            self.work_dir = work_dir
+            if removed:
+                logger.info("deleted %d job folders left by an earlier run", removed)
             store = DocumentStore(ocr.output_dir, self.config.base_url)
             store.ensure_directory()
             uploads = UploadLinks(
@@ -73,6 +79,7 @@ class ScanscribeMCPService(BaseService):
             transport=self.config.server.transport,
             store=store,
             uploads=uploads,
+            work_dir=work_dir,
         )
         self.ocr.start()
         logger.info(
@@ -85,6 +92,9 @@ class ScanscribeMCPService(BaseService):
         if self.ocr is not None:
             self.ocr.stop()
             self.ocr = None
+        if self.work_dir is not None:
+            self.work_dir.release()
+            self.work_dir = None
 
     def get_service_name(self) -> str:
         return "scanscribe"

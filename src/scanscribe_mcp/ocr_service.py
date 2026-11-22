@@ -32,8 +32,22 @@ from scanscribe import IMAGE_EXTENSIONS, OcrEngine, PageImage, PageSource, Scans
 
 from .config import ScanscribeMcpConfig
 from .documents import DocumentStore, StoredDocument
-from .jobs import Clock, Job, JobInput, JobState, JobTable, OcrOptions, Step
-from .uploads import UploadLinks
+from .jobs import Clock, Job, JobInput, JobState, JobTable, OcrOptions, Step, new_job_id
+from .uploads import (
+    IMAGES,
+    PDF,
+    ZIP,
+    Grant,
+    InputRefused,
+    UploadLinks,
+    UploadPlan,
+    WorkDir,
+    count_zip_pages,
+    extract_zip,
+    file_kind,
+    link_pages,
+    plan_upload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,12 +133,14 @@ class OcrService:
         on_stuck: Callable[[], None] | None = None,
         store: DocumentStore | None = None,
         uploads: UploadLinks | None = None,
+        work_dir: WorkDir | None = None,
         purge_interval_s: float = 3600.0,
         purge_poll_s: float = 60.0,
     ) -> None:
         self.config = config
         self.store = store  # HTTP only (D6)
         self.uploads = uploads  # HTTP only (D7)
+        self.work_dir = work_dir  # HTTP only (D12)
         self.local_paths = local_paths
         self.transport = transport
         self.clock = clock
@@ -208,18 +224,30 @@ class OcrService:
                 + (f" (got {', '.join(given)})" if given else "")
             )
         options = self.options(lang, dpi, columns)
-        if input_path is None:
+        job_id = new_job_id()
+        grant: Grant | None = None
+        if input_path is not None:
+            job_input = self._local_input(input_path)
+        elif self.store is None or self.uploads is None or self.work_dir is None:
             raise ValueError(
-                f"{given[0]} needs the HTTP server's upload links, which this server doesn't "
-                "offer yet; pass input_path on a local stdio server"
+                f"{given[0]} needs the HTTP server's upload links; on this local server, pass "
+                "input_path instead"
             )
-        job_input = self._local_input(input_path)
+        elif upload_id is not None:
+            grant, job_input = self._upload_input(upload_id, job_id)
+        else:
+            assert document is not None
+            job_input = self._document_input(document, job_id)
         # The stuck check and the submit hold the lock the watchdog takes to go stuck, so no job
         # is queued after the watchdog has failed the queue (R28).
         with self._admission:
             if self._stuck:
                 raise ServiceStuckError(STUCK_MESSAGE)
-            job = self.table.submit(job_input, options)
+            job = self.table.submit(job_input, options, job_id=job_id)
+        if grant is not None and self.uploads is not None and grant.snapshot is None:
+            # The job took these files: later starts on this upload_id reuse them (D7).
+            grant.snapshot = job_input.documents
+            self.uploads.close(grant)
         logger.info(
             "job %s queued: %s, %s bytes, %s page images, lang %s, dpi %d, columns %d",
             job.id,
@@ -281,6 +309,80 @@ class OcrService:
             return JobInput(kind="file", path=path, name=input_path, size=path.stat().st_size)
         except OSError as exc:
             raise ValueError(f"cannot read input_path {input_path} ({type(exc).__name__})") from exc
+
+    def _upload_input(self, upload_id: str, job_id: str) -> tuple[Grant, JobInput]:
+        """The input from an upload link's files; any refusal leaves the link open (D7, R29)."""
+        assert self.uploads is not None and self.store is not None
+        grant = self.uploads.get(upload_id)
+        if grant is None:
+            raise ValueError(f"unknown or expired upload_id {upload_id!r}")
+        if grant.snapshot is not None:
+            ids = grant.snapshot
+        else:
+            if grant.in_progress:
+                raise ValueError(
+                    f"{grant.in_progress} upload(s) are still arriving through this link; wait "
+                    "for them with check_upload(upload_id, wait_s=60), then start again"
+                )
+            if not grant.files:
+                raise ValueError(
+                    "no file has been uploaded through this link yet; upload the pages first "
+                    "(check_upload(upload_id, wait_s=60) waits for them)"
+                )
+            ids = tuple(grant.files)
+        documents = []
+        for doc_id in ids:
+            stored = self.store.get(doc_id)
+            if stored is None:
+                raise ValueError("the files of this upload are no longer stored; upload them again")
+            documents.append((stored, bool(self.store.metadata(stored).get("hidden"))))
+        plan = plan_upload(documents)
+        return grant, self._planned_input(plan, job_id)
+
+    def _document_input(self, doc_id: str, job_id: str) -> JobInput:
+        """The input from one stored document: an uploaded PDF or zip (D7)."""
+        assert self.store is not None
+        stored = self.store.get(doc_id)
+        if stored is None:
+            raise ValueError(f"no stored document with id {doc_id!r}; it may have expired")
+        kind = file_kind(stored.filename)
+        if self.store.metadata(stored).get("kind") != "upload" or kind not in (PDF, ZIP):
+            raise ValueError(
+                f"document {doc_id!r} ({stored.filename}) is not an uploaded PDF or zip; a job "
+                "reads an uploaded PDF or zip by its id, or an upload link's files by upload_id"
+            )
+        return self._planned_input(UploadPlan(kind, (stored,)), job_id)
+
+    def _planned_input(self, plan: UploadPlan, job_id: str) -> JobInput:
+        """A JobInput for an upload plan; images and zips are counted here (D5, R4)."""
+        assert self.work_dir is not None
+        ids = tuple(document.id for document in plan.documents)
+        names = tuple(document.filename for document in plan.documents)
+        size = sum(document.size for document in plan.documents)
+        if plan.kind == PDF:
+            pdf = plan.documents[0]
+            return JobInput(
+                kind=PDF, path=pdf.path, name=pdf.filename, size=size, documents=ids, files=names
+            )
+        pages_folder = self.work_dir.job_folder(job_id) / "pages"
+        if plan.kind == ZIP:
+            archive = plan.documents[0]
+            count = count_zip_pages(archive.path, archive.filename, self.config.max_pages)
+            name = archive.filename
+        else:
+            count = len(plan.documents)
+            name = "the uploaded pages"
+        if count > self.config.max_pages:
+            raise ValueError(self._too_many_pages(name, count))
+        return JobInput(
+            kind=plan.kind,
+            path=pages_folder,
+            name=name,
+            size=size,
+            page_count=count,
+            documents=ids,
+            files=names,
+        )
 
     def _too_many_pages(self, name: str, count: int) -> str:
         return (
@@ -395,12 +497,15 @@ class OcrService:
             return
         except _JobGone:
             return
-        except (JobError, ScanscribeError) as exc:
+        except (JobError, ScanscribeError, InputRefused) as exc:
             self._fail(job, public_message(job.input, str(exc)), exc)
             return
         except Exception as exc:
             self._fail(job, f"OCR failed ({type(exc).__name__})", exc)
             return
+        finally:
+            if self.work_dir is not None:
+                self.work_dir.remove(job.id)
         if self.table.finish(
             job.id, JobState.SUCCEEDED, pages=pages, result_document=result_document
         ):
@@ -475,6 +580,7 @@ class OcrService:
         # page from when the job reaches it until the next page is ready. The engine load isn't
         # timed: a first run downloads models.
         self._set(job, step=Step.CHECKING_PAGES, page_started=self.clock())
+        self._build_job_folder(job)
         if job.input.path.is_file():
             self._check_pdf_page_sizes(job.input, options.dpi)
         with self._open_source(job.input.path, options.dpi, options.columns) as source:
@@ -497,6 +603,31 @@ class OcrService:
                 if tracked.failed:
                     self._drop_engine()
                 del tracked
+
+    def _build_job_folder(self, job: Job) -> None:
+        """Lay out an upload's pages in WORK_DIR/<job id>/pages/: links to the images, or a
+        zip's pages unpacked (D7, R17). A PDF is read where it is stored."""
+        job_input = job.input
+        if job_input.kind not in (ZIP, IMAGES):
+            return
+        assert self.store is not None and self.work_dir is not None
+        documents = []
+        for doc_id in job_input.documents:
+            stored = self.store.get(doc_id)
+            if stored is None:
+                raise JobError("the uploaded files are no longer stored; upload them again")
+            documents.append(stored)
+        if job_input.kind == IMAGES:
+            link_pages(tuple(documents), job_input.path)
+            return
+        count = extract_zip(
+            documents[0].path,
+            job_input.name,
+            job_input.path,
+            self.config.max_pages,
+            self.config.max_upload_bytes,
+        )
+        logger.info("job %s: zip unpacked to %d pages", job.id, count)
 
     def _set(self, job: Job, **changes: object) -> None:
         if not self.table.update(job.id, **changes):
@@ -612,8 +743,11 @@ def count_page_images(folder: Path) -> int:
 
 
 def public_message(job_input: JobInput, message: str) -> str:
-    """Replace the input's server path with the caller's own name for it (D11)."""
+    """Replace the input's server path with the caller's own name for it (D11). A page in an
+    upload's job folder becomes its own file name: `<job folder>/pages/p7.png` → `p7.png`."""
     for server_path in _path_spellings(job_input.path):
+        if job_input.kind in (ZIP, IMAGES):
+            message = message.replace(server_path + os.sep, "")
         message = message.replace(server_path, job_input.name)
     return message
 

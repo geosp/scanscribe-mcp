@@ -15,19 +15,27 @@ loop, so no lock is needed. Nothing here uses MCP's API.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
+import os
+import re
 import secrets
+import shutil
+import stat
 import time
 import uuid
+import zipfile
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+from typing import IO
 
 from python_multipart import MultipartParser
 from python_multipart.exceptions import FormParserError
 from python_multipart.multipart import parse_options_header
+from scanscribe import IMAGE_EXTENSIONS
 
-from .documents import DocumentStore, PendingDocument, StoredDocument
+from .documents import ID_PATTERN, DocumentStore, PendingDocument, StoredDocument
 
 GRANT_RETENTION_S = 24 * 3600
 FIELD_LIMIT = 64 * 1024
@@ -302,3 +310,244 @@ class UploadReceiver:
         if part is not None and part.pending is not None and part.size == 0:
             raise UploadError(400, "empty files are not accepted")
         self._part = None
+
+
+# --- turning uploads into a scanscribe input (D7, D12, R17, R18, R29) -----------------------
+
+
+class InputRefused(ValueError):
+    """An upload or document that can't be a job's input; the message is safe for the caller."""
+
+
+PDF, ZIP, IMAGES = "pdf", "zip", "images"
+
+
+def file_kind(filename: str) -> str | None:
+    """pdf, zip or images by suffix, in any case; None for any other file."""
+    suffix = PurePosixPath(filename).suffix.lower()
+    if suffix == ".pdf":
+        return PDF
+    if suffix == ".zip":
+        return ZIP
+    if suffix in IMAGE_EXTENSIONS:
+        return IMAGES
+    return None
+
+
+@dataclass(frozen=True)
+class UploadPlan:
+    """What a job reads from an upload: one PDF, one zip, or images used as a folder."""
+
+    kind: str
+    documents: tuple[StoredDocument, ...]
+
+
+def plan_upload(documents: list[tuple[StoredDocument, bool]]) -> UploadPlan:
+    """Choose the input from a link's (document, was hidden) pairs (D7, R29).
+
+    Hidden files and files that are neither PDF, zip nor image are skipped. One PDF, one zip,
+    or any number of images with distinct names is an input; anything else is refused.
+    """
+    by_kind: dict[str, list[StoredDocument]] = {PDF: [], ZIP: [], IMAGES: []}
+    for document, hidden in documents:
+        kind = file_kind(document.filename)
+        if kind is not None and not hidden:
+            by_kind[kind].append(document)
+    present = [kind for kind in (PDF, ZIP, IMAGES) if by_kind[kind]]
+    if not present:
+        raise InputRefused("the upload holds no PDF, zip or page image")
+    if len(present) > 1:
+        raise InputRefused(
+            f"the upload mixes {' and '.join(_counted(k, len(by_kind[k])) for k in present)}; a "
+            "job reads one PDF, one zip, or page images. Upload them through separate links"
+        )
+    kind = present[0]
+    chosen = by_kind[kind]
+    if kind != IMAGES and len(chosen) > 1:
+        raise InputRefused(
+            f"the upload holds {_counted(kind, len(chosen))}; a job reads one. Upload each "
+            "through its own link, or put the pages in one zip"
+        )
+    if kind == IMAGES:
+        seen: set[str] = set()
+        for document in chosen:
+            if document.filename in seen:
+                raise InputRefused(
+                    f"two uploaded images are both named {document.filename!r}; give the pages "
+                    "distinct names and upload them again through a new link"
+                )
+            seen.add(document.filename)
+    return UploadPlan(kind, tuple(chosen))
+
+
+def _counted(kind: str, count: int) -> str:
+    if kind == IMAGES:
+        return f"{count} page image(s)"
+    return f"{count} {'PDF' if kind == PDF else 'zip'}{'s' if count > 1 else ''}"
+
+
+def link_pages(documents: tuple[StoredDocument, ...], folder: Path) -> None:
+    """Put uploaded images into the job folder under their names: hard links, or copies when
+    the store is on another filesystem."""
+    folder.mkdir(parents=True)
+    for document in documents:
+        target = folder / document.filename
+        try:
+            os.link(document.path, target)
+        except OSError:
+            shutil.copyfile(document.path, target)
+
+
+# --- zips (R17, notes.md#d7) ----------------------------------------------------------------
+
+DRIVE = re.compile(r"^[A-Za-z]:")
+CHUNK = 1024 * 1024
+
+
+def _parts(name: str) -> list[str]:
+    return [part for part in re.split(r"[/\\]", name) if part]
+
+
+def _skipped(info: zipfile.ZipInfo) -> bool:
+    """Folders, hidden names and macOS metadata, as scanscribe skips hidden files."""
+    parts = _parts(info.filename)
+    return (
+        info.is_dir()
+        or not parts
+        or parts[0] == "__MACOSX"
+        or any(part.startswith(".") for part in parts)
+    )
+
+
+def zip_pages(path: Path, zip_name: str, max_pages: int, max_bytes: int) -> list[zipfile.ZipInfo]:
+    """The page entries of a zip, checked from its central directory before anything is
+    written: no path that leaves the folder, no symlink, only images, distinct base names, at
+    most `max_pages` entries and `max_bytes` declared bytes."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            infos = archive.infolist()
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise InputRefused(f"{zip_name} is not a readable zip file") from exc
+    pages: list[zipfile.ZipInfo] = []
+    names: set[str] = set()
+    declared = 0
+    for info in infos:
+        name = info.filename
+        if name.startswith(("/", "\\")) or DRIVE.match(name) or ".." in _parts(name):
+            raise InputRefused(f"{zip_name}: the entry {name!r} points outside the zip's folder")
+        if stat.S_ISLNK(info.external_attr >> 16):
+            raise InputRefused(f"{zip_name}: the entry {name!r} is a symbolic link")
+        if _skipped(info):
+            continue
+        base = _parts(name)[-1]
+        if file_kind(base) != IMAGES:
+            raise InputRefused(
+                f"{zip_name}: the entry {name!r} is not a page image; a zip may hold only "
+                f"{', '.join(sorted(IMAGE_EXTENSIONS))} files"
+            )
+        if base in names:
+            raise InputRefused(
+                f"{zip_name}: two entries are named {base!r}; give the pages distinct names"
+            )
+        if info.flag_bits & 0x1:
+            raise InputRefused(f"{zip_name}: the entry {name!r} is encrypted")
+        names.add(base)
+        declared += info.file_size
+        pages.append(info)
+        if len(pages) > max_pages:
+            raise InputRefused(
+                f"{zip_name} has more than {max_pages} pages; this server takes at most "
+                f"{max_pages} per job (SCANSCRIBE_MCP_MAX_PAGES). Split it into smaller jobs"
+            )
+        if declared > max_bytes:
+            raise InputRefused(
+                f"{zip_name} unpacks to more than {max_bytes} bytes "
+                "(SCANSCRIBE_MCP_MAX_UPLOAD_BYTES)"
+            )
+    return pages
+
+
+def count_zip_pages(path: Path, zip_name: str, max_pages: int) -> int:
+    """The number of pages a zip would give, from its central directory, for the check at
+    start_ocr_job (R4). The full rules run in the worker."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            return sum(1 for info in archive.infolist() if not _skipped(info))
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise InputRefused(f"{zip_name} is not a readable zip file") from exc
+
+
+def extract_zip(path: Path, zip_name: str, folder: Path, max_pages: int, max_bytes: int) -> int:
+    """Unpack a zip's pages flat into `folder`, under their base names (R17).
+
+    The bytes written are counted as they stream, so an entry whose header understates its size
+    can't pass `max_bytes`; zipfile's CRC check catches a damaged entry. Returns the page count.
+    """
+    pages = zip_pages(path, zip_name, max_pages, max_bytes)
+    folder.mkdir(parents=True)
+    written = 0
+    try:
+        with zipfile.ZipFile(path) as archive:
+            for info in pages:
+                target = folder / _parts(info.filename)[-1]
+                with archive.open(info) as source, open(target, "xb") as sink:
+                    while chunk := source.read(CHUNK):
+                        written += len(chunk)
+                        if written > max_bytes:
+                            raise InputRefused(
+                                f"{zip_name} unpacks to more than {max_bytes} bytes "
+                                "(SCANSCRIBE_MCP_MAX_UPLOAD_BYTES)"
+                            )
+                        sink.write(chunk)
+    except (zipfile.BadZipFile, EOFError, RuntimeError, NotImplementedError) as exc:
+        raise InputRefused(f"{zip_name} is damaged or uses an unsupported format") from exc
+    return len(pages)
+
+
+# --- the work folder (D12) ------------------------------------------------------------------
+
+LOCK_FILE = ".scanscribe-mcp.lock"
+
+
+class WorkDir:
+    """WORK_DIR, held by one HTTP server through an exclusive lock file."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._lock: IO[str] | None = None
+
+    def acquire(self) -> int:
+        """Take the lock, or refuse to start; then delete leftover job folders, which no job
+        survives a restart to use. Returns how many were deleted."""
+        self.path.mkdir(parents=True, exist_ok=True)
+        handle = open(self.path / LOCK_FILE, "a")  # noqa: SIM115
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            handle.close()
+            raise ValueError(
+                f"another scanscribe-mcp server is using SCANSCRIBE_MCP_WORK_DIR ({self.path}); "
+                "give each server its own"
+            ) from None
+        self._lock = handle
+        removed = 0
+        for entry in self.path.iterdir():
+            if not ID_PATTERN.match(entry.name):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry, ignore_errors=True)
+            else:
+                entry.unlink(missing_ok=True)
+            removed += 1
+        return removed
+
+    def release(self) -> None:
+        if self._lock is not None:
+            self._lock.close()  # closing the file drops the lock
+            self._lock = None
+
+    def job_folder(self, job_id: str) -> Path:
+        return self.path / job_id
+
+    def remove(self, job_id: str) -> None:
+        shutil.rmtree(self.job_folder(job_id), ignore_errors=True)
