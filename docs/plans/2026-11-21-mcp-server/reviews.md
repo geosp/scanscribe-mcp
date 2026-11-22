@@ -112,3 +112,27 @@ Fixes applied 2026-11-21 (owner's choice): H1 fixed, H4 accepted, the other Nits
 
 ## 2026-11-21 · approved · plan and phases 01–03 (after round 3)
 Re-approved by the owner after the D10 / R28 update passed design review round 3.
+
+## 2026-11-21 · impl-review · phase 01 · round 1 · changes-requested
+Diff: 34a1a04..d79c2fc (frozen). Profile `small`: contract lens only.
+Reviewers: contract ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-01-round-01-contract.md)
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| I1 | Major | contract | R28: no watchdog while page 1 renders or during the pre-check; a hang there never fails the job | open |
+| I2 | Major | contract | R22: a symlink-loop `input_path` raises RuntimeError past `tool_errors()`; fastmcp logs the path in a traceback | open |
+| I3 | Nit | contract | R26: catch-all is `except Exception`; SystemExit/KeyboardInterrupt in the engine ends the worker | open |
+| I4 | Nit | contract | R28: race between the stuck check in `start_job` and the watchdog's `fail_queued` | open |
+| I5 | Nit | contract | D11: only the input path is rewritten; other server paths in scanscribe errors pass through (phase 02 R23) | open |
+| I6 | Nit | contract | R27: size check only when `is_file()`; a FIFO/device is read as PDF unchecked | open |
+| I7 | Nit | contract | R27/D5: size loop walks every page before the R4 count check | open |
+| I8 | Nit | contract | R2: some errors (bad lang, two inputs, output_path with a range) come before the local-path error | open |
+| I9 | Nit | contract | R2: `output_path` over HTTP not tested | open |
+| I10 | Nit | contract | R14: `~/out.txt` accepted via expanduser though the path "must be absolute" | open |
+| I11 | Nit | contract | D6: `write_replacing` leaves a transient temp file next to `output_path` | open |
+| I12 | Nit | contract | R10: cancel during the last page ends `succeeded` although the reply said it would stop | open |
+| I13 | Nit | contract | R12: test uses a hand-written EngineMissingError, not `scanscribe.load_engine` | open |
+| I14 | Nit | contract | R21: stdio test doesn't join the stdout reader before asserting | open |
+| I15 | Nit | contract | R21: launcher runs `server.run()`, not the production `main()` | open |
+| I16 | Nit | contract | R24: guard checks only the parent session at its end | open |
+| I17 | Nit | contract | 4.4: `expected.txt` ends with a newline, `check.txt` doesn't; `diff` never reads identical | open |
