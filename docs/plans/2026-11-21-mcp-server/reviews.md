@@ -138,3 +138,24 @@ Reviewers: contract ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/impl-review
 | I17 | Nit | contract | 4.4: `expected.txt` ends with a newline, `check.txt` doesn't; `diff` never reads identical | fixed: make_pdf.py writes expected.txt without a final newline |
 
 Fixes applied 2026-11-21 (owner's choice): both Majors fixed test first; Nits fixed or accepted. Round 2 (contract lens) re-checks I1, I2 and the changed R28.
+
+## 2026-11-21 · impl-review · phase 01 · round 2 · passed
+Diff: 34a1a04..045e804 (frozen). Profile `small`: contract lens only; also the one-lens re-check of the changed R28.
+Reviewers: contract ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-01-round-02-contract.md). I1 and I2 confirmed fixed; I3, I5-I7, I10, I11, I15 stay accepted.
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| J1 | Nit | contract | D3: after an engine error, `gc.collect()` runs while the traceback still holds the engine; the next load may not free it | open |
+| J2 | Nit | contract | R10: the "after the engine loads" cancel check isn't observable by the tests | open |
+| J3 | Nit | contract | R22: the task 2.4 log capture bypasses the MCP layer | open |
+| J4 | Nit | contract | R24: the guard reads `sys.modules` once at session end; an import later removed passes | open |
+| J5 | Nit | contract | R24: the real `load_engine` test fails (and trips the guard) after `uv sync --extra gpu` | open |
+| J6 | Nit | contract | R28: over HTTP the process doesn't exit when stuck (phase 02 task 4.5) | open |
+| J7 | Nit | contract | R2: the HTTP refusal for `output_path` gives `input_path` advice | open |
+| J8 | Nit | contract | R8: no seconds shown for the checking step or page 1's render | open |
+| J9 | Nit | contract | D1: `ocr_service.py` imports MCP through `config.py` → the kit; ARCHITECTURE.md says config.py doesn't | open |
+| J10 | Nit | contract | ARCHITECTURE.md's watchdog section is stale after I1 | open |
+| J11 | Nit | contract | D5: `format_pages` runs at result time, not in the worker | open |
+| J12 | Nit | contract | R1: `input_path=""` OCRs the server's working directory | open |
+| J13 | Nit | contract | R1: "no job is created" is never asserted | open |
+| J14 | Nit | contract | R5/R7: parts tested only at `JobTable` level | open |
