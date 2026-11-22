@@ -98,7 +98,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
 
 ### 4. End to end and documentation
 
-- [ ] 4.1 Add a test fixture module with the fake engine and a session-end check that `paddle`
+- [x] 4.1 Add a test fixture module with the fake engine and a session-end check that `paddle`
   and `paddleocr` were never imported; generate small fixture images and PDFs in the tests (no
   book material) (R24). Verify: `uv run pytest` passes on the base install, and the check fails
   when a test puts a stub module named `paddle` into `sys.modules` on purpose.
