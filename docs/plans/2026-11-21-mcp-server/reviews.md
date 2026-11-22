@@ -145,17 +145,19 @@ Reviewers: contract ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/impl-review
 
 | ID | Sev | Lens | Finding | Resolution |
 | --- | --- | --- | --- | --- |
-| J1 | Nit | contract | D3: after an engine error, `gc.collect()` runs while the traceback still holds the engine; the next load may not free it | open |
-| J2 | Nit | contract | R10: the "after the engine loads" cancel check isn't observable by the tests | open |
-| J3 | Nit | contract | R22: the task 2.4 log capture bypasses the MCP layer | open |
-| J4 | Nit | contract | R24: the guard reads `sys.modules` once at session end; an import later removed passes | open |
-| J5 | Nit | contract | R24: the real `load_engine` test fails (and trips the guard) after `uv sync --extra gpu` | open |
-| J6 | Nit | contract | R28: over HTTP the process doesn't exit when stuck (phase 02 task 4.5) | open |
-| J7 | Nit | contract | R2: the HTTP refusal for `output_path` gives `input_path` advice | open |
-| J8 | Nit | contract | R8: no seconds shown for the checking step or page 1's render | open |
-| J9 | Nit | contract | D1: `ocr_service.py` imports MCP through `config.py` → the kit; ARCHITECTURE.md says config.py doesn't | open |
-| J10 | Nit | contract | ARCHITECTURE.md's watchdog section is stale after I1 | open |
-| J11 | Nit | contract | D5: `format_pages` runs at result time, not in the worker | open |
-| J12 | Nit | contract | R1: `input_path=""` OCRs the server's working directory | open |
-| J13 | Nit | contract | R1: "no job is created" is never asserted | open |
-| J14 | Nit | contract | R5/R7: parts tested only at `JobTable` level | open |
+| J1 | Nit | contract | D3: after an engine error, `gc.collect()` runs while the traceback still holds the engine; the next load may not free it | fixed: gc.collect() before every engine load (ocr_service.py); alive_at_load asserted in test_engine_error_fails_the_job_and_drops_the_engine, which the fake engine (no cycles) can't pin |
+| J2 | Nit | contract | R10: the "after the engine loads" cancel check isn't observable by the tests | accepted: cancel before page 1 is covered; the extra check only saves rendering page 1 |
+| J3 | Nit | contract | R22: the task 2.4 log capture bypasses the MCP layer | accepted: fastmcp logs ToolErrors without their message; test_unexpected_tool_error_hides_the_path_from_logs_and_client covers the tool layer |
+| J4 | Nit | contract | R24: the guard reads `sys.modules` once at session end; an import later removed passes | accepted: no test removes engine modules; a meta_path blocker can come later if needed |
+| J5 | Nit | contract | R24: the real `load_engine` test fails (and trips the guard) after `uv sync --extra gpu` | fixed: test_real_load_engine_without_paddle_fails_the_job skips when paddle is installed |
+| J6 | Nit | contract | R28: over HTTP the process doesn't exit when stuck (phase 02 task 4.5) | accepted: phase 02 task 4.5 wires on_stuck to exit over HTTP |
+| J7 | Nit | contract | R2: the HTTP refusal for `output_path` gives `input_path` advice | fixed: separate output_path message over HTTP; test_output_path_never_over_http |
+| J8 | Nit | contract | R8: no seconds shown for the checking step or page 1's render | accepted: page_seconds stays per page, as R8 says |
+| J9 | Nit | contract | D1: `ocr_service.py` imports MCP through `config.py` → the kit; ARCHITECTURE.md says config.py doesn't | fixed: plan.md D1 wording, docs/ARCHITECTURE.md module table, ocr_service.py docstring |
+| J10 | Nit | contract | ARCHITECTURE.md's watchdog section is stale after I1 | fixed: docs/ARCHITECTURE.md watchdog section |
+| J11 | Nit | contract | D5: `format_pages` runs at result time, not in the worker | accepted: D6 keeps pages on the job; formatting at result time gives the same text |
+| J12 | Nit | contract | R1: `input_path=""` OCRs the server's working directory | fixed: empty input_path refused; test_empty_input_path_is_refused_and_creates_no_job |
+| J13 | Nit | contract | R1: "no job is created" is never asserted | fixed: same test asserts the table holds no job |
+| J14 | Nit | contract | R5/R7: parts tested only at `JobTable` level | accepted: the tool tests cover queue order and full queue; expiry needs an injected clock in the service, not worth it now |
+
+Fixes applied 2026-11-21 (owner's choice): J1, J5, J7, J9, J10, J12, J13 fixed; the rest accepted. The review stays passed; nothing is open.
