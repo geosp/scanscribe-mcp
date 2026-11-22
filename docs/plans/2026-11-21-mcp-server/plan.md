@@ -1,8 +1,8 @@
 ---
 title: A working scanscribe MCP server
-status: in-progress
+status: implemented
 created: 2026-11-21
-updated: 2026-11-21
+updated: 2026-11-22
 design_review: { status: passed, rounds: 3, last: 2026-11-21 }
 approved: 2026-11-21
 adr_review: null
@@ -25,10 +25,13 @@ uploads, then a Docker image for an NVIDIA GPU. Main risks: hostile uploads such
 huge PDF pages (R17, R27), book material or server paths in logs and errors (R22, R23), a page
 that hangs the worker (R28), and an image that can't see the GPU (phase 03's manual check).
 
-```text
-agent ──start_ocr_job──▶ tool ──▶ OcrService ──queue──▶ worker thread ──▶ scanscribe
-      ◀─get_ocr_job (state, step, page n/total, device)  (one engine, one job at a time)
-      ◀─get_ocr_result (text or slice, id, URL) ◀── document store ◀──┘
+```mermaid
+flowchart LR
+    agent["agent"] -- "start_ocr_job" --> tool["tool"] --> ocr["OcrService"]
+    ocr -- "queue" --> worker["worker thread: one engine, one job at a time"] --> scanscribe["scanscribe"]
+    worker --> store["document store"]
+    ocr -. "get_ocr_job: state, step, page n/total, device" .-> agent
+    store -. "get_ocr_result: text or slice, id, URL" .-> agent
 ```
 
 ## Why
@@ -457,7 +460,7 @@ unwanted.
 | --- | --- | --- | --- |
 | 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26–R28) | done | 16/16 |
 | 02 | HTTP, token, uploads and the document store (R15–R20, R22, R23, R28, R29) | done | 15/15 |
-| 03 | Docker on the GPU and the manual GPU check (R25) | approved | 0/8 |
+| 03 | Docker on the GPU and the manual GPU check (R25) | done | 9/9 |
 
 ## Decision log
 
@@ -473,3 +476,14 @@ unwanted.
   The browser form gets no real-browser run; a test pins its contract with the route. The GPU
   over HTTP is covered by phase 03's manual check (task 03/3.1). No requirement or decision
   changes. Owner's decision.
+- 2026-11-22 · Task 03/1.1 found that `python:3.12-slim` lacks `libgomp.so.1`, which PaddlePaddle
+  loads, so the image also installs Debian's `libgomp1`. With it, `paddle.utils.run_check()` passes
+  on the GPU inside the container, so D9 stands and the `nvidia/cuda` fallback isn't needed. The
+  assumption that the cu126 wheels need only the host driver holds once that one library is there.
+- 2026-11-22 · Task 03/1.3: the first job in the container also failed on `libGL.so.1`, which the
+  OpenCV that PaddleX imports needs, so the image installs `libgl1` and `libglib2.0-0` as well.
+  Then the job ran on `gpu:0`, and PaddleX wrote its models under `PADDLE_PDX_CACHE_HOME`
+  (`/cache/paddlex`, 133 MB), with no `~/.paddlex`: the assumption holds, and D9 stands.
+- 2026-11-22 · Task 03/2.4 added at the owner's request: every diagram in the project's documents
+  is drawn in Mermaid, and AGENTS.md says so for new ones. Folder listings stay text, and raw
+  review reports stay verbatim. No requirement or decision changes.

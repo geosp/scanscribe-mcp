@@ -502,10 +502,16 @@ class OcrService:
         started = self.clock()
         logger.info("job %s started", job.id)
         try:
-            # A print() during the job would sit in sys.stdout's buffer and reach the MCP wire
-            # at exit, after the transport hands fd 1 back (D10, notes.md#d10).
-            with contextlib.redirect_stdout(sys.stderr):
-                pages = self._process(job)
+            try:
+                # A print() during the job would sit in sys.stdout's buffer and reach the MCP
+                # wire at exit, after the transport hands fd 1 back (D10, notes.md#d10).
+                with contextlib.redirect_stdout(sys.stderr):
+                    pages = self._process(job)
+            finally:
+                # Before the job leaves `running`: a caller that sees a final state never finds
+                # its folder.
+                if self.work_dir is not None:
+                    self.work_dir.remove(job.id)
             result_document = self._save_result(job, pages)
         except JobCancelled:
             if self.table.finish(job.id, JobState.CANCELLED):
@@ -519,9 +525,6 @@ class OcrService:
         except Exception as exc:
             self._fail(job, f"OCR failed ({type(exc).__name__})", exc)
             return
-        finally:
-            if self.work_dir is not None:
-                self.work_dir.remove(job.id)
         if self.table.finish(
             job.id, JobState.SUCCEEDED, pages=pages, result_document=result_document
         ):

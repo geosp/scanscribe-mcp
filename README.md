@@ -4,7 +4,7 @@ MCP server that OCRs scanned PDFs and page-image folders into page-marked text w
 
 An agent starts an OCR **job**, follows its progress page by page, can cancel it, and fetches the text. The text comes back inline when it is short, in page ranges when it is long, by download URL over HTTP, or into a local file over stdio. Each page starts with a `--- Page N ---` line.
 
-**Status:** the stdio server and the HTTP server with upload links and a document store work (phases 01 and 02 of [the plan](docs/plans/2026-11-21-mcp-server/plan.md)). A Docker image for an NVIDIA GPU is the next phase. Agents working here follow [AGENTS.md](AGENTS.md). How it is built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+**Status:** the stdio server and the HTTP server with upload links and a document store work (phases 01 and 02 of [the plan](docs/plans/2026-11-21-mcp-server/plan.md)), and a Docker image runs it on an NVIDIA GPU (phase 03). Agents working here follow [AGENTS.md](AGENTS.md). How it is built: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Install
 
@@ -48,6 +48,37 @@ Over HTTP the server never reads or writes a path the client names. Files arrive
 | `GET /upload/<token>` | the link | A browser form for the upload |
 | `POST /upload/<token>` | the link | Multipart upload in field `file`. Answers 404 once the link is expired, used up or closed, 413 past a size limit, 400 for an empty file. Stores the request's files only when all of them have arrived |
 | `GET /documents/<id>/<filename>` | the random id | Downloads a stored document: a result, or an upload |
+
+## Run it in Docker on an NVIDIA GPU
+
+Needs Docker with Compose, an NVIDIA driver on the host, and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), so containers can reach the GPU. The image installs the `gpu` extra; its PaddlePaddle wheels bring their own CUDA libraries, and the host brings only the driver.
+
+```bash
+cp .env.example .env    # then set SCANSCRIBE_MCP_TOKEN: openssl rand -hex 32
+docker compose up -d --build
+claude mcp add --transport http scanscribe http://localhost:8302/mcp \
+  --header "Authorization: Bearer <the token from .env>"
+```
+
+The server listens on port 8302. Compose refuses to start without `SCANSCRIBE_MCP_TOKEN`. `SCANSCRIBE_MCP_HOST_PORT` changes the host port, and upload links and download URLs follow it; set `SCANSCRIBE_MCP_PUBLIC_BASE_URL` when clients reach the host by another name or through a proxy. `SCANSCRIBE_MCP_MEM_LIMIT` sets the memory limit (default `16g`).
+
+Compose passes only these settings to the container, from `.env` or the shell:
+
+- always: `SCANSCRIBE_MCP_TOKEN`, `SCANSCRIBE_MCP_PUBLIC_BASE_URL`, `SCANSCRIBE_MCP_LANGS` (default `en`), and `SCANSCRIBE_MCP_DEVICE`, which defaults to `gpu:0` here, so a container that can't see the GPU fails its jobs instead of running them on the CPU;
+- when set: `SCANSCRIBE_MCP_DEFAULT_LANG`, `SCANSCRIBE_MCP_MAX_PAGES`, `SCANSCRIBE_MCP_PAGE_TIMEOUT_S`, `SCANSCRIBE_MCP_RETENTION_DAYS`, `SCANSCRIBE_MCP_MAX_FILE_BYTES`, `SCANSCRIBE_MCP_MAX_UPLOAD_BYTES`, `SCANSCRIBE_MCP_UPLOAD_LINK_TTL_S` and `SCANSCRIBE_MCP_UPLOAD_LINK_MAX_FILES`.
+
+Any other variable in `.env` doesn't reach the container; add it to `environment` in `docker-compose.yml`. The storage paths, the model cache and the port are fixed in the image.
+
+Two named volumes keep data across container restarts and rebuilds:
+
+| Volume | Mounted at | Holds |
+| --- | --- | --- |
+| `documents` | `/data` | Uploads and results (`/data/documents`) and job folders (`/data/work`), on one filesystem so uploaded images are hard-linked into job folders |
+| `models` | `/cache` | The OCR models PaddleX downloads at the first job (`/cache/paddlex`, about 130 MB for English), so later containers don't download them again |
+
+`docker compose down` keeps both volumes; `docker compose down -v` deletes them, with every stored document.
+
+**A hung job.** When a page takes longer than `SCANSCRIBE_MCP_PAGE_TIMEOUT_S`, the server fails the job and exits with code 70, and `restart: unless-stopped` starts it again. The restart forgets jobs and upload links, which live in memory, so agents start the job again; stored documents stay. A healthcheck polls the HTTP port every 30 s.
 
 ## Tools
 

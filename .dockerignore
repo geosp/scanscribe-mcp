@@ -1,0 +1,7 @@
+# An allow-list (plan D9): the build context holds only what the image copies, so project
+# data, secrets, local environments and stray files anywhere in the tree never reach it.
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
