@@ -39,7 +39,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   MIME types this server needs, and the `/documents/<id>/<filename>` route (D6, R20). Verify:
   unit tests for save, get, a wrong filename, a malformed id, and purge of an old document
   except one a live job uses.
-- [ ] 2.2 Over HTTP, save each succeeded job's text as `ocr-<job id>.txt`, with options and page
+- [x] 2.2 Over HTTP, save each succeeded job's text as `ocr-<job id>.txt`, with options and page
   count in `meta.json`, and return the id and URL from `get_ocr_result`; run purge hourly on a
   timer (D6, R20). Verify: a client test downloads the URL and gets exactly the text; a stdio
   server creates no `OUTPUT_DIR` or `WORK_DIR`; `meta.json` holds no recognized text; with an

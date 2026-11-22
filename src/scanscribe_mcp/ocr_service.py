@@ -31,7 +31,7 @@ import scanscribe
 from scanscribe import IMAGE_EXTENSIONS, OcrEngine, PageImage, PageSource, ScanscribeError
 
 from .config import ScanscribeMcpConfig
-from .documents import DocumentStore
+from .documents import DocumentStore, StoredDocument
 from .jobs import Clock, Job, JobInput, JobState, JobTable, OcrOptions, Step
 
 logger = logging.getLogger(__name__)
@@ -117,6 +117,8 @@ class OcrService:
         watchdog_interval_s: float = 1.0,
         on_stuck: Callable[[], None] | None = None,
         store: DocumentStore | None = None,
+        purge_interval_s: float = 3600.0,
+        purge_poll_s: float = 60.0,
     ) -> None:
         self.config = config
         self.store = store  # HTTP only (D6)
@@ -133,6 +135,8 @@ class OcrService:
         self._open_source = open_source
         self._watchdog_interval_s = watchdog_interval_s
         self._on_stuck = on_stuck
+        self._purge_interval_s = purge_interval_s
+        self._purge_poll_s = purge_poll_s
         self._engine: OcrEngine | None = None
         self._engine_lang: str | None = None
         self._engine_device: str | None = None
@@ -150,6 +154,10 @@ class OcrService:
             threading.Thread(target=self._work, name="ocr-worker", daemon=True),
             threading.Thread(target=self._watch, name="ocr-watchdog", daemon=True),
         ]
+        if self.store is not None:
+            self._threads.append(
+                threading.Thread(target=self._purge_loop, name="document-purge", daemon=True)
+            )
         for thread in self._threads:
             thread.start()
 
@@ -377,6 +385,7 @@ class OcrService:
             # at exit, after the transport hands fd 1 back (D10, notes.md#d10).
             with contextlib.redirect_stdout(sys.stderr):
                 pages = self._process(job)
+            result_document = self._save_result(job, pages)
         except JobCancelled:
             if self.table.finish(job.id, JobState.CANCELLED):
                 logger.info("job %s cancelled", job.id)
@@ -389,10 +398,69 @@ class OcrService:
         except Exception as exc:
             self._fail(job, f"OCR failed ({type(exc).__name__})", exc)
             return
-        if self.table.finish(job.id, JobState.SUCCEEDED, pages=pages):
+        if self.table.finish(
+            job.id, JobState.SUCCEEDED, pages=pages, result_document=result_document
+        ):
             logger.info(
                 "job %s succeeded: %d pages in %.1f s", job.id, len(pages), self.clock() - started
             )
+        elif result_document is not None and self.store is not None:
+            self.store.delete(result_document)  # the job left `running` meanwhile
+
+    def _save_result(self, job: Job, pages: list[list[str]]) -> str | None:
+        """Over HTTP, store the text as ocr-<job id>.txt; meta.json gets the options and page
+        count, never text (D6, R20, R22)."""
+        if self.store is None:
+            return None
+        options = job.options
+        document = self.store.save(
+            scanscribe.format_pages(pages).encode("utf-8"),
+            f"ocr-{job.id}.txt",
+            {
+                "kind": "result",
+                "job_id": job.id,
+                "input": job.input.kind,
+                "lang": options.lang,
+                "dpi": options.dpi,
+                "columns": options.columns,
+                "pages": len(pages),
+            },
+        )
+        logger.info("job %s: result stored as document %s", job.id, document.id)
+        return document.id
+
+    def result_document(self, job_id: str) -> StoredDocument | None:
+        """The stored text of a succeeded HTTP job, while the store keeps it."""
+        self.succeeded_pages(job_id)
+        doc_id = self.table.get(job_id).result_document
+        if self.store is None or doc_id is None:
+            return None
+        return self.store.get(doc_id)
+
+    # --- the purge timer ---------------------------------------------------------------------
+
+    def _purge_loop(self) -> None:
+        last: float | None = None
+        while True:
+            now = self.clock()
+            if last is None or now - last >= self._purge_interval_s:
+                last = now
+                self.purge()
+            if self._stopping.wait(self._purge_poll_s):
+                return
+
+    def purge(self) -> int:
+        """Delete stored documents past RETENTION_DAYS, except those a live job reads (R20)."""
+        if self.store is None:
+            return 0
+        try:
+            removed = self.store.purge(self.config.retention_days, keep=self.table.live_documents())
+        except Exception as exc:
+            logger.warning("document purge failed (%s)", type(exc).__name__)
+            return 0
+        if removed:
+            logger.info("purged %d stored documents past the retention", removed)
+        return removed
 
     def _fail(self, job: Job, message: str, exc: BaseException) -> None:
         if self.table.finish(job.id, JobState.FAILED, error=message):

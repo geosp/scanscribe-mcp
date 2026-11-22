@@ -35,8 +35,9 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
         Get a succeeded job's page-marked text
 
         Each page starts with a `--- Page N ---` line. The whole text comes back inline when
-        it is short enough; otherwise ask for page ranges with first_page and last_page, or
-        save it with output_path. A range that is too long comes back cut at a page boundary,
+        it is short enough; otherwise ask for page ranges with first_page and last_page. On the
+        HTTP server the reply also has a download URL for the whole text; on a local server,
+        output_path saves it to a file. A range that is too long comes back cut at a page boundary,
         and the reply names the next first_page.
         """
         if output_path is not None:
@@ -55,6 +56,7 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
             )
         with tool_errors("get_ocr_result"):
             result = ocr.result(job_id, first_page, last_page)
+            document = ocr.result_document(job_id)
         limit = ocr.config.max_inline_chars
         structured: dict[str, Any] = {
             "job_id": job_id,
@@ -67,28 +69,42 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
             "text": result.text,
         }
         ways = ["ask for page ranges with first_page and last_page"]
+        download: list[str] = []
+        if document is not None:
+            structured["document"] = document.id
+            structured["url"] = document.url
+            download = [f"Download the whole text: {document.url} (document id {document.id})."]
+            ways.insert(0, "download it from the URL above")
         if ocr.local_paths:
             ways.append("pass output_path to write the whole text to a local file")
         if first_page is None and last_page is None:
             structured["chars"] = result.chars
             if result.text is not None:
-                lines = [f"Job {job_id}: {result.total_pages} pages, {result.chars} characters."]
+                lines = [
+                    f"Job {job_id}: {result.total_pages} pages, {result.chars} characters.",
+                    *download,
+                ]
                 return reply(lines, structured, result.text)
             lines = [
                 f"Job {job_id}: {result.total_pages} pages, {result.chars} characters, more than "
                 f"the {limit}-character inline limit, so no text is returned here.",
+                *download,
                 "To get it, " + ", or ".join(ways) + ".",
             ]
             return reply(lines, structured)
         if result.text is None:
             lines = [
                 f"Page {first_page or 1} alone is longer than the {limit}-character inline "
-                "limit, so no text is returned here."
+                "limit, so no text is returned here.",
+                *download,
             ]
             if ocr.local_paths:
                 lines.append("Pass output_path to write the whole text to a local file.")
             return reply(lines, structured)
-        lines = [f"Pages {result.first_page} to {result.last_page} of {result.total_pages}."]
+        lines = [
+            f"Pages {result.first_page} to {result.last_page} of {result.total_pages}.",
+            *download,
+        ]
         if result.next_first_page is not None:
             lines.append(
                 f"The range was cut at the {limit}-character inline limit; continue with "

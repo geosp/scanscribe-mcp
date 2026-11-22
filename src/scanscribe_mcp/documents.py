@@ -152,6 +152,11 @@ class DocumentStore:
             return {}
         return data if isinstance(data, dict) else {}
 
+    def delete(self, doc_id: str) -> None:
+        folder = self._folder(doc_id)
+        if folder is not None:
+            shutil.rmtree(folder, ignore_errors=True)
+
     def purge(self, older_than_days: float, keep: Collection[str] = ()) -> int:
         """Delete documents older than the retention, except those in `keep` (ids a live job
         uses); return how many were deleted (R20)."""
