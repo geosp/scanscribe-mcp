@@ -64,7 +64,9 @@ async def test_local_paths_refused_over_http_even_when_allowed(tmp_path: Path) -
         assert s.service.config.local_paths_allowed is False
         with pytest.raises(ToolError, match="not accepted over HTTP.*create_upload_link"):
             await s.mcp.call_tool("start_ocr_job", {"input_path": str(folder)})
-        with pytest.raises(ToolError, match="output_path is not accepted over HTTP"):
+        with pytest.raises(
+            ToolError, match="output_path is not accepted over HTTP.*download URL.*upload links"
+        ):
             await s.mcp.call_tool(
                 "get_ocr_result", {"job_id": "0" * 32, "output_path": str(tmp_path / "x.txt")}
             )

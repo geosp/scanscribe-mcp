@@ -114,10 +114,10 @@ async def test_an_upload_in_progress_or_none_yet_is_refused(tmp_path: Path) -> N
         assert s.service.ocr is not None and s.service.ocr.uploads is not None
         grant = s.service.ocr.uploads.get(upload_id)
         assert grant is not None
-        s.service.ocr.uploads.begin(grant)  # as the route does while a file arrives
+        s.service.ocr.uploads.open_request(grant)  # as the route does while a request arrives
         with pytest.raises(ToolError, match="still arriving.*wait"):
             await s.mcp.call_tool("start_ocr_job", {"upload_id": upload_id})
-        s.service.ocr.uploads.abandon(grant, 0)
+        s.service.ocr.uploads.end_request(grant)
         await send(s, url, ("p1.png", png()))
         with pytest.raises(ToolError, match="unknown or expired upload_id"):
             await s.mcp.call_tool("start_ocr_job", {"upload_id": "0" * 32})
@@ -190,3 +190,51 @@ def test_a_second_server_on_the_same_work_dir_refuses_to_start(tmp_path: Path) -
     finally:
         first.cleanup()
     start_service(http_config(tmp_path)).cleanup()  # free again once the first one stops
+
+
+async def test_a_start_during_a_real_upload_is_refused_and_the_upload_lands(tmp_path: Path) -> None:
+    """M2, R29: a request counts as arriving from the moment the route takes it, before its
+    part headers are parsed; and no file is stored on a link a job has closed."""
+    from .http_helpers import chunked, multipart, post_stream
+
+    async with http_server(tmp_path) as s:
+        assert s.service.ocr is not None
+        url, upload_id = await new_link(s)
+        await send(s, url, ("p1.png", png(1)))
+        refusals: list[str] = []
+
+        def start_midway(index: int) -> None:
+            if index == 0:  # the route has the request; no byte of its body is parsed yet
+                try:
+                    s.service.ocr.start_job(upload_id=upload_id)  # type: ignore[union-attr]
+                except ValueError as exc:
+                    refusals.append(str(exc))
+
+        response = await post_stream(
+            s, url, chunked(multipart(("p2.png", png(2))), 64, start_midway)
+        )
+        assert response.status_code == 200
+        assert refusals and "still arriving" in refusals[0]
+        done = await run_job(s, upload_id=upload_id)
+        assert sorted(done["start"]["files"]) == ["p1.png", "p2.png"]
+
+
+async def test_no_file_is_stored_on_a_link_closed_mid_request(tmp_path: Path) -> None:
+    """M2: a link closed while a request streams (as a job does) takes none of its files."""
+    from .http_helpers import chunked, multipart, post_stream
+
+    async with http_server(tmp_path) as s:
+        assert s.service.ocr is not None and s.service.ocr.uploads is not None
+        links = s.service.ocr.uploads
+        url, upload_id = await new_link(s)
+        grant = links.get(upload_id)
+        assert grant is not None
+
+        def close_midway(index: int) -> None:
+            if index == 3:
+                links.close(grant)
+
+        body = multipart(("p1.png", png()), ("p2.png", png()))
+        response = await post_stream(s, url, chunked(body, 64, close_midway))
+        assert response.status_code == 404 and grant.files == []
+        assert grant.requests == 0 and grant.in_progress == 0

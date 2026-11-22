@@ -123,3 +123,32 @@ def test_bytes_are_counted_while_streaming(tmp_path: Path, monkeypatch: pytest.M
     with pytest.raises(InputRefused, match="unpacks to more than 1000 bytes"):
         extract_zip(path, "pages.zip", folder, max_pages=10, max_bytes=1000)
     assert (folder / "p1.png").stat().st_size <= 1000
+
+
+def test_zip_entries_get_plain_names(tmp_path: Path) -> None:
+    """N2, D8: entry names go through safe_filename like any uploaded name."""
+    path = tmp_path / "pages.zip"
+    path.write_bytes(
+        build_zip(("scan/p\x01one?.png", png(1)), ("scan/" + "y" * 300 + ".png", png(2)))
+    )
+    folder = tmp_path / "job" / "pages"
+    assert extract_zip(path, "pages.zip", folder, max_pages=10, max_bytes=10**6) == 2
+    names = sorted(p.name for p in folder.iterdir())
+    assert all(name.endswith(".png") and len(name) <= 120 for name in names)
+    assert "p_one_.png" in names
+
+
+def test_names_equal_after_cleaning_are_duplicates(tmp_path: Path) -> None:
+    path = tmp_path / "pages.zip"
+    path.write_bytes(build_zip(("a/p?1.png", png(1)), ("b/p*1.png", png(2))))
+    with pytest.raises(InputRefused, match="two entries are named 'p_1.png'"):
+        zip_pages(path, "pages.zip", max_pages=10, max_bytes=10**6)
+
+
+async def test_a_non_image_entry_is_named_at_start(tmp_path: Path) -> None:
+    """N4: a zip of the page limit plus readme.txt is refused for the readme, not as too long."""
+    data = build_zip(*((f"p{n}.png", png()) for n in range(1, 4)), ("readme.txt", b"x"))
+    async with http_server(tmp_path, max_pages=3) as s:
+        upload_id = await upload(s, ("pages.zip", data))
+        with pytest.raises(Exception, match="readme.txt.*not a page image"):
+            await s.mcp.call_tool("start_ocr_job", {"upload_id": upload_id})

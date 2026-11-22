@@ -48,8 +48,8 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
 
         loop = asyncio.get_running_loop()
         deadline = loop.time() + wait_s
-        while (not grant.files or grant.in_progress) and loop.time() < deadline:
-            if not grant.in_progress and not links.open(grant):
+        while (not grant.files or grant.requests) and loop.time() < deadline:
+            if not grant.requests and not links.open(grant):
                 break  # nothing more can arrive
             await asyncio.sleep(min(POLL_S, max(deadline - loop.time(), 0)))
 
@@ -65,22 +65,22 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
             ]
         else:
             lines = ["No files uploaded yet."]
-        if grant.in_progress:
-            lines.append(f"{grant.in_progress} upload(s) still in progress; wait for them.")
+        if grant.requests:
+            lines.append(f"{grant.requests} upload(s) still in progress; wait for them.")
         if grant.closed:
             lines.append("A job has taken these files; the link takes no more.")
         elif links.expired(grant):
             lines.append("The link has expired for new uploads.")
         else:
             lines.append(f"The link accepts {grant.remaining} more file(s).")
-        if files and not grant.in_progress:
+        if files and not grant.requests:
             lines.append(f"Start the OCR with start_ocr_job(upload_id={upload_id!r}).")
         return reply(
             lines,
             {
                 "upload_id": upload_id,
                 "files": files,
-                "in_progress": grant.in_progress,
+                "in_progress": grant.requests,
                 "remaining": grant.remaining if links.open(grant) else 0,
                 "expired": links.expired(grant),
                 "closed": grant.closed,

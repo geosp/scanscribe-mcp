@@ -5,15 +5,24 @@ R15, R16, R29.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
-import httpx
+import pytest
 
 from scanscribe_mcp.uploads import UploadLinks
 
-from .http_helpers import CONTENT_TYPE, HttpServer, http_server, multipart, png
+from .http_helpers import (
+    BOUNDARY,
+    CONTENT_TYPE,
+    HttpServer,
+    chunked,
+    http_server,
+    multipart,
+    png,
+    post_stream,
+)
 
 MB = 1024 * 1024
 
@@ -38,22 +47,6 @@ async def post(s: HttpServer, url: str, body: bytes, **headers: str) -> tuple[in
     headers = {"Content-Type": CONTENT_TYPE, **headers}
     response = await s.http.post(url, content=body, headers=headers)
     return response.status_code, response.json() if response.content else {}
-
-
-async def post_stream(s: HttpServer, url: str, chunks: AsyncIterator[bytes]) -> httpx.Response:
-    return await s.http.post(url, content=chunks, headers={"Content-Type": CONTENT_TYPE})
-
-
-def chunked(
-    body: bytes, size: int, between: Callable[[int], None] | None = None
-) -> AsyncIterator[bytes]:
-    async def stream() -> AsyncIterator[bytes]:
-        for index, start in enumerate(range(0, len(body), size)):
-            if between is not None:
-                between(index)
-            yield body[start : start + size]
-
-    return stream()
 
 
 async def test_a_good_upload(tmp_path: Path) -> None:
@@ -174,3 +167,82 @@ async def test_an_upload_begun_in_time_may_finish_after_expiry(tmp_path: Path) -
         assert seen == [(1, 0)]  # the running upload held the link's only file
         assert len(grant.files) == 1 and links.expired(grant)
         assert (await post(s, url, multipart(("again.png", png()))))[0] == 404
+
+
+# --- implementation review, phase 02 round 1 ------------------------------------------------
+
+
+async def test_a_body_cut_before_its_closing_boundary_stores_nothing(tmp_path: Path) -> None:
+    """M1: python-multipart's finalize() doesn't check the end, so the receiver must."""
+    async with http_server(tmp_path) as s:
+        url, upload_id = await new_link(s)
+        whole = multipart(("p1.png", png()))
+        no_closing = whole[: whole.rindex(f"--{BOUNDARY}--".encode())]
+        half_file = whole[: len(whole) // 2]
+        headers_only = whole[: whole.index(b"\r\n\r\n") + 4]
+        for body in (no_closing, half_file, headers_only):
+            status, data = await post(s, url, body)
+            assert status == 400 and "incomplete" in data["error"], (status, data)
+        grant = uploads(s).get(upload_id)
+        assert grant is not None and grant.files == [] and grant.in_progress == 0
+        assert grant.bytes == 0 and stored_count(tmp_path) == 0
+
+
+async def test_header_and_part_counts_are_limited(tmp_path: Path) -> None:
+    """M3: a huge part header, or endless empty field parts, is refused without growing."""
+    async with http_server(tmp_path) as s:
+        url, _ = await new_link(s)
+        huge = (
+            (
+                f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="file"; '
+                f'filename="p1.png"\r\nX-Pad: {"x" * 80_000}\r\n\r\n'
+            ).encode()
+            + png()
+            + f"\r\n--{BOUNDARY}--\r\n".encode()
+        )
+        response = await post_stream(s, url, chunked(huge, 1024))
+        assert response.status_code == 400
+        field = f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="x"\r\n\r\n\r\n'.encode()
+        many = field * 5000 + multipart(("p1.png", png()))
+        response = await post_stream(s, url, chunked(many, 4096))
+        assert response.status_code == 400 and "send only files" in response.json()["error"]
+        assert stored_count(tmp_path) == 0
+
+
+async def test_a_250_mb_file_answers_413_at_the_default_limits(tmp_path: Path) -> None:
+    """N8, R16: on a default link (100 files, 200 MiB each, 2 GiB in all) the declared length
+    passes, so the streaming check must stop a 250 MB file, and nothing is stored."""
+    async with http_server(tmp_path) as s:
+        url, upload_id = await new_link(s, max_files=100)
+        head = multipart(("big.pdf", b""))
+        head = head[: head.index(b"\r\n\r\n") + 4]
+
+        async def body() -> AsyncIterator[bytes]:
+            yield head
+            for _ in range(250):
+                yield b"\0" * MB
+            yield f"\r\n--{BOUNDARY}--\r\n".encode()
+
+        response = await post_stream(s, url, body())
+        assert response.status_code == 413 and "each file" in response.json()["error"]
+        grant = uploads(s).get(upload_id)
+        assert grant is not None and grant.bytes == 0 and stored_count(tmp_path) == 0
+
+
+async def test_a_store_error_gives_back_the_upload_and_hides_its_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """N3: an OSError while starting a file must not leave the link counting it as arriving."""
+    async with http_server(tmp_path) as s:
+        url, upload_id = await new_link(s)
+        assert s.service.ocr is not None and s.service.ocr.store is not None
+
+        def broken(filename: str) -> None:
+            raise OSError(f"disk full writing {tmp_path}/secret-name.png")
+
+        monkeypatch.setattr(s.service.ocr.store, "begin", broken)
+        status, data = await post(s, url, multipart(("secret-name.png", png())))
+        assert status == 500 and "secret-name" not in str(data)
+        grant = uploads(s).get(upload_id)
+        assert grant is not None and grant.in_progress == 0 and grant.requests == 0
+        assert "secret-name" not in caplog.text

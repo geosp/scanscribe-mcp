@@ -180,6 +180,9 @@ class ScanscribeMCPService(BaseService):
                      f"and this link takes {grant.remaining_bytes} more bytes"},
                     status_code=413,
                 )  # fmt: skip
+            # From here the link is busy: start_ocr_job refuses until this request is answered,
+            # even before any part header is parsed (R29).
+            links.open_request(grant)
             try:
                 receiver = UploadReceiver(
                     links, grant, store, request.headers.get("content-type", ""), max_file_bytes
@@ -191,6 +194,15 @@ class ScanscribeMCPService(BaseService):
             except ClientDisconnect:
                 logger.info("upload %s: the client went away", grant.upload_id)
                 return Response(status_code=400)
+            except Exception as exc:
+                # Its text may hold a stored path with the uploaded name: log the class (R22).
+                logger.warning("upload %s failed (%s)", grant.upload_id, type(exc).__name__)
+                return JSONResponse(
+                    {"error": "the server could not store the upload; try again"},
+                    status_code=500,
+                )
+            finally:
+                links.end_request(grant)
             logger.info(
                 "upload %s: stored %d file(s), %d bytes",
                 grant.upload_id,

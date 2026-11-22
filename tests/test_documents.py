@@ -106,3 +106,10 @@ async def test_download_route(tmp_path: Path) -> None:
             assert (await s.http.get(path)).status_code == 404, path
         meta = json.loads((saved.path.parent / "meta.json").read_text())
         assert "created" in meta
+
+
+def test_a_long_name_keeps_its_extension() -> None:
+    """N1: the 120-character cut must not drop the suffix that makes a file a page."""
+    name = safe_filename("p" + "x" * 300 + ".png")
+    assert name.endswith(".png") and len(name) <= 120
+    assert safe_filename("a" * 300).startswith("a") and len(safe_filename("a" * 300)) <= 120

@@ -22,6 +22,7 @@ import re
 import secrets
 import shutil
 import stat
+import sys
 import time
 import uuid
 import zipfile
@@ -35,11 +36,12 @@ from python_multipart.exceptions import FormParserError
 from python_multipart.multipart import parse_options_header
 from scanscribe import IMAGE_EXTENSIONS
 
-from .documents import ID_PATTERN, DocumentStore, PendingDocument, StoredDocument
+from .documents import ID_PATTERN, DocumentStore, PendingDocument, StoredDocument, safe_filename
 
 GRANT_RETENTION_S = 24 * 3600
 FIELD_LIMIT = 64 * 1024
-"""Bytes allowed in all non-file form fields of one request; they are read and dropped."""
+"""Bytes allowed in one request beyond its files' data: every part's headers, and other form
+fields, which are read and dropped (R16)."""
 
 
 @dataclass
@@ -53,6 +55,10 @@ class Grant:
     bytes: int = 0
     """Bytes stored plus bytes of uploads in progress."""
     in_progress: int = 0
+    """Files of uploads in progress, held against `max_files`."""
+    requests: int = 0
+    """Upload requests the route has taken and not answered yet, counted from their first byte,
+    before any part header is parsed: a job may not start while one is open (R29)."""
     closed: bool = False
     snapshot: tuple[str, ...] | None = None
     """The document ids a job took from this link; later starts reuse them (D7)."""
@@ -103,6 +109,13 @@ class UploadLinks:
         if grant is None or grant.closed or grant.remaining <= 0:
             return None
         return grant
+
+    def open_request(self, grant: Grant) -> None:
+        """An upload request reached the route: the link is busy until it is answered."""
+        grant.requests += 1
+
+    def end_request(self, grant: Grant) -> None:
+        grant.requests -= 1
 
     def begin(self, grant: Grant) -> None:
         """An upload starts: it holds one of the link's files until it ends."""
@@ -174,6 +187,7 @@ class _Part:
     pending: PendingDocument | None = None
     size: int = 0
     hidden: bool = False
+    ended: bool = False
 
 
 class UploadReceiver:
@@ -181,8 +195,10 @@ class UploadReceiver:
 
     Each part with a file name becomes a pending document, written chunk by chunk; the per-file
     and per-link limits are checked on every chunk, so an oversized stream stops early. The files
-    are stored only when the whole request has arrived; if anything fails, none is (`abort`).
-    Other form fields are read and dropped, up to FIELD_LIMIT bytes in all.
+    are stored only when the whole request has arrived, up to its closing boundary (python-
+    multipart's `finalize` doesn't check that, so `on_end` does); if anything fails, or the link
+    was closed meanwhile, none is (`abort`). Part headers and other form fields count against
+    FIELD_LIMIT; other fields are read and dropped.
     """
 
     def __init__(
@@ -207,6 +223,7 @@ class UploadReceiver:
         self._header_value = b""
         self._headers: dict[bytes, bytes] = {}
         self._field_bytes = 0
+        self._complete = False
         self._parser = MultipartParser(
             boundary,
             {
@@ -217,6 +234,7 @@ class UploadReceiver:
                 "on_headers_finished": self._on_headers_finished,
                 "on_part_data": self._on_part_data,
                 "on_part_end": self._on_part_end,
+                "on_end": self._on_end,
             },
         )
 
@@ -225,9 +243,12 @@ class UploadReceiver:
             async for chunk in chunks:
                 self._parser.write(chunk)
             self._parser.finalize()
+            if not self._complete or any(not part.ended for part in self._parts):
+                raise UploadError(400, "the upload is incomplete: it ended before its last byte")
             files = [part for part in self._parts if part.pending is not None]
             if not files:
                 raise UploadError(400, "send the files as multipart/form-data, in field 'file'")
+            self._check_open()
             return self._commit(files)
         except FormParserError as exc:
             self.abort()
@@ -248,6 +269,10 @@ class UploadReceiver:
             stored.append(document)
         return stored
 
+    def _check_open(self) -> None:
+        if self.grant.closed:
+            raise UploadError(404, "this upload link is closed: a job has taken its files")
+
     def abort(self) -> None:
         """Throw away every file of this request that isn't stored yet."""
         for part in self._parts:
@@ -261,10 +286,17 @@ class UploadReceiver:
     def _on_part_begin(self) -> None:
         self._headers = {}
 
+    def _count_extra(self, count: int) -> None:
+        self._field_bytes += count
+        if self._field_bytes > FIELD_LIMIT:
+            raise UploadError(400, "send only files, in field 'file'")
+
     def _on_header_field(self, data: bytes, start: int, end: int) -> None:
+        self._count_extra(end - start)
         self._header_name += data[start:end]
 
     def _on_header_value(self, data: bytes, start: int, end: int) -> None:
+        self._count_extra(end - start)
         self._header_value += data[start:end]
 
     def _on_header_end(self) -> None:
@@ -276,25 +308,25 @@ class UploadReceiver:
         raw = params.get(b"filename")
         filename = raw.decode("utf-8", "replace") if raw is not None else None
         part = _Part(filename)
+        self._part = part
+        self._parts.append(part)
         if filename is not None and params.get(b"name") == b"file":
+            self._check_open()
             if self.grant.remaining <= 0:
                 raise UploadError(
                     400, f"too many files: this link takes {self.grant.max_files} in all"
                 )
-            self.links.begin(self.grant)
             part.hidden = is_hidden(filename)
+            # The document first: if it can't be made, the link holds nothing for this part.
             part.pending = self.store.begin(filename or "upload")
-        self._part = part
-        self._parts.append(part)
+            self.links.begin(self.grant)
 
     def _on_part_data(self, data: bytes, start: int, end: int) -> None:
         part = self._part
         assert part is not None
         count = end - start
         if part.pending is None:
-            self._field_bytes += count
-            if self._field_bytes > FIELD_LIMIT:
-                raise UploadError(400, "send only files, in field 'file'")
+            self._count_extra(count)
             return
         if part.size + count > self.max_file_bytes:
             raise UploadError(413, f"each file must be at most {self.max_file_bytes} bytes")
@@ -309,7 +341,12 @@ class UploadReceiver:
         part = self._part
         if part is not None and part.pending is not None and part.size == 0:
             raise UploadError(400, "empty files are not accepted")
+        if part is not None:
+            part.ended = True
         self._part = None
+
+    def _on_end(self) -> None:
+        self._complete = True
 
 
 # --- turning uploads into a scanscribe input (D7, D12, R17, R18, R29) -----------------------
@@ -439,7 +476,7 @@ def zip_pages(path: Path, zip_name: str, max_pages: int, max_bytes: int) -> list
             raise InputRefused(f"{zip_name}: the entry {name!r} is a symbolic link")
         if _skipped(info):
             continue
-        base = _parts(name)[-1]
+        base = page_name(info)
         if file_kind(base) != IMAGES:
             raise InputRefused(
                 f"{zip_name}: the entry {name!r} is not a page image; a zip may hold only "
@@ -467,14 +504,16 @@ def zip_pages(path: Path, zip_name: str, max_pages: int, max_bytes: int) -> list
     return pages
 
 
-def count_zip_pages(path: Path, zip_name: str, max_pages: int) -> int:
-    """The number of pages a zip would give, from its central directory, for the check at
-    start_ocr_job (R4). The full rules run in the worker."""
-    try:
-        with zipfile.ZipFile(path) as archive:
-            return sum(1 for info in archive.infolist() if not _skipped(info))
-    except (zipfile.BadZipFile, OSError) as exc:
-        raise InputRefused(f"{zip_name} is not a readable zip file") from exc
+def page_name(info: zipfile.ZipInfo) -> str:
+    """The page's file name: the entry's base name, made plain like any uploaded name (D8)."""
+    return safe_filename(_parts(info.filename)[-1])
+
+
+def count_zip_pages(path: Path, zip_name: str, max_bytes: int) -> int:
+    """The number of pages a zip would give, for the check at start_ocr_job (R4). It applies
+    every rule of `zip_pages` from the central directory but the page limit, which the caller
+    checks so its message gives the count. The worker checks them all again."""
+    return len(zip_pages(path, zip_name, sys.maxsize, max_bytes))
 
 
 def extract_zip(path: Path, zip_name: str, folder: Path, max_pages: int, max_bytes: int) -> int:
@@ -489,7 +528,7 @@ def extract_zip(path: Path, zip_name: str, folder: Path, max_pages: int, max_byt
     try:
         with zipfile.ZipFile(path) as archive:
             for info in pages:
-                target = folder / _parts(info.filename)[-1]
+                target = folder / page_name(info)
                 with archive.open(info) as source, open(target, "xb") as sink:
                     while chunk := source.read(CHUNK):
                         written += len(chunk)

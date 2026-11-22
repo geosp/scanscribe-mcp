@@ -67,3 +67,28 @@ async def test_any_other_server_folder_in_a_message_is_hidden(
         done = await run_job(s, upload_id=await upload(s, ("p1.png", png())))
         assert done["state"] == "failed"
         assert done["error"] == "cannot read <server folder>/x/y.png"
+
+
+def test_scrub_leaves_the_callers_own_names_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """N7: with relative folders, only whole server paths are hidden, not a caller's name."""
+    from scanscribe_mcp.config import ScanscribeMcpConfig
+    from scanscribe_mcp.documents import DocumentStore
+    from scanscribe_mcp.ocr_service import OcrService
+    from scanscribe_mcp.uploads import WorkDir
+
+    from .fakes import FakeEngineFactory
+
+    monkeypatch.chdir(tmp_path)
+    service = OcrService(
+        ScanscribeMcpConfig(),
+        FakeEngineFactory(),
+        local_paths=False,
+        transport="http",
+        store=DocumentStore(Path("data/documents"), "http://x"),
+        work_dir=WorkDir(Path("data/work")),
+    )
+    assert service.scrub("my-data/work.pdf page 2") == "my-data/work.pdf page 2"
+    hidden = service.scrub(f"cannot read {tmp_path}/data/work/abc/p1.png")
+    assert hidden == "cannot read <server folder>/abc/p1.png"

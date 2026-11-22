@@ -81,7 +81,7 @@ The link is the only upload credential: `secrets.token_urlsafe(32)`, kept as a s
 
 ### From an upload to a job
 
-`start_ocr_job(upload_id=...)` runs in the event loop, like the upload route, so the two never interleave. It refuses while an upload is arriving, then decides what the link's files are: one PDF, one zip, or page images with distinct names. Hidden files and other files are skipped; anything else is refused and the link stays open. Images and zip entries are counted against `MAX_PAGES` here. Once the job is created it keeps the document ids, the link closes, and a later start on the same `upload_id` reuses those ids. `start_ocr_job(document=...)` takes one uploaded PDF or zip; result `.txt` documents and images are refused.
+`start_ocr_job(upload_id=...)` runs in the event loop, like the upload route, but the route awaits between chunks, so the two do interleave. So the route counts each request on the link from the moment it takes it, before any part header is parsed, and `start_ocr_job` refuses while one is open; a request that finds the link closed meanwhile stores nothing (404). Then it decides what the link's files are: one PDF, one zip, or page images with distinct names. Hidden files and other files are skipped; anything else is refused and the link stays open. Images and zip entries are counted against `MAX_PAGES` here. Once the job is created it keeps the document ids, the link closes, and a later start on the same `upload_id` reuses those ids. `start_ocr_job(document=...)` takes one uploaded PDF or zip; result `.txt` documents and images are refused.
 
 In the worker, during `checking pages`:
 

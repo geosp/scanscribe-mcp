@@ -9,7 +9,7 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -204,3 +204,22 @@ def http_process(tmp_path: Path, *args: str) -> Iterator[tuple[subprocess.Popen[
         if process.poll() is None:
             process.kill()
         process.wait(10)
+
+
+# --- streamed request bodies ----------------------------------------------------------------
+
+
+async def post_stream(s: HttpServer, url: str, chunks: AsyncIterator[bytes]) -> httpx.Response:
+    return await s.http.post(url, content=chunks, headers={"Content-Type": CONTENT_TYPE})
+
+
+def chunked(
+    body: bytes, size: int, between: Callable[[int], None] | None = None
+) -> AsyncIterator[bytes]:
+    async def stream() -> AsyncIterator[bytes]:
+        for index, start in enumerate(range(0, len(body), size)):
+            if between is not None:
+                between(index)
+            yield body[start : start + size]
+
+    return stream()

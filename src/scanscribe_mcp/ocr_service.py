@@ -291,7 +291,9 @@ class OcrService:
         if self.transport != "stdio" and argument == "output_path":
             raise ValueError(
                 "output_path is not accepted over HTTP: the server can't write your files. "
-                "Get the text inline or in page ranges with first_page and last_page instead"
+                "Use the download URL that get_ocr_result returns, or get the text inline or in "
+                "page ranges with first_page and last_page. Files reach this server only "
+                "through upload links (create_upload_link)"
             )
         if self.transport != "stdio":
             raise ValueError(
@@ -327,9 +329,9 @@ class OcrService:
         if grant.snapshot is not None:
             ids = grant.snapshot
         else:
-            if grant.in_progress:
+            if grant.requests:
                 raise ValueError(
-                    f"{grant.in_progress} upload(s) are still arriving through this link; wait "
+                    f"{grant.requests} upload(s) are still arriving through this link; wait "
                     "for them with check_upload(upload_id, wait_s=60), then start again"
                 )
             if not grant.files:
@@ -375,7 +377,7 @@ class OcrService:
         pages_folder = self.work_dir.job_folder(job_id) / "pages"
         if plan.kind == ZIP:
             archive = plan.documents[0]
-            count = count_zip_pages(archive.path, archive.filename, self.config.max_pages)
+            count = count_zip_pages(archive.path, archive.filename, self.config.max_upload_bytes)
             name = archive.filename
         else:
             count = len(plan.documents)
@@ -542,7 +544,8 @@ class OcrService:
                 "pages": len(pages),
             },
         )
-        logger.info("job %s: result stored as document %s", job.id, document.id)
+        # Not the document id: with the job id it rebuilds the token-free download URL (D8).
+        logger.info("job %s: result stored (%d bytes)", job.id, document.size)
         return document.id
 
     def scrub(self, message: str) -> str:
@@ -776,7 +779,7 @@ def _path_spellings(path: Path) -> Iterator[str]:
 
 
 def _folder_spellings(folder: Path) -> Iterator[str]:
-    yield str(folder)
+    """Absolute spellings only: a relative one ("data/work") could match a caller's own name."""
     yield str(folder.absolute())
     yield os.path.realpath(folder)
 

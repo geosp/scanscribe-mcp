@@ -62,10 +62,18 @@ class StoredDocument:
         return mime_type_for(self.extension)
 
 
+MAX_NAME = 120
+
+
 def safe_filename(name: str, default: str = "document") -> str:
-    """A plain file name: no folders, no unusual characters, not hidden."""
+    """A plain file name: no folders, no unusual characters, not hidden, at most MAX_NAME
+    characters. A long name is cut before its suffix, so a page stays a page."""
     name = UNSAFE_CHARS.sub("_", Path(name.replace("\\", "/")).name).strip(" .")
-    return name[:120] or default
+    if len(name) > MAX_NAME:
+        suffix = Path(name).suffix
+        suffix = suffix if len(suffix) <= 16 else ""
+        name = name[: MAX_NAME - len(suffix)].rstrip(" .") + suffix
+    return name or default
 
 
 class PendingDocument:

@@ -68,7 +68,8 @@ async def test_the_http_flow_logs_no_names_tokens_paths_or_text(
         assert failed["state"] == "failed" and "chapter-3.pdf" in failed["error"]
     logs = server_records(caplog)
     assert done["job_id"] in logs and failed["job_id"] in logs
-    for forbidden in (*BOOK_TEXT, good_token, bad_token, s.path(url), failed["error"]):
+    document = result.structured_content["document"]  # with the job id it rebuilds the URL
+    for forbidden in (*BOOK_TEXT, good_token, bad_token, s.path(url), document, failed["error"]):
         assert forbidden not in logs, forbidden
 
 
