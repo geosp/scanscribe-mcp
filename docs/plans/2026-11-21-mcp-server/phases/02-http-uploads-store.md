@@ -83,7 +83,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   PDF or zip, and images and zips are counted at start (D5, D7, R1, R4). Verify: client tests for
   both inputs, an unknown id, a result `.txt` id refused, an upload with no files yet, and a
   501-entry zip refused at start.
-- [ ] 4.4 Swap server paths in every job and tool error for the caller's own names (R23). Verify:
+- [x] 4.4 Swap server paths in every job and tool error for the caller's own names (R23). Verify:
   a test with an unreadable uploaded `p7.png` checks that the error names `p7.png` and contains
   neither the resolved `WORK_DIR` nor the resolved `OUTPUT_DIR`; the job id itself may appear.
 - [ ] 4.5 Over HTTP, make R28's watchdog exit the process with a non-zero code after it marks the

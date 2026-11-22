@@ -141,6 +141,14 @@ class OcrService:
         self.store = store  # HTTP only (D6)
         self.uploads = uploads  # HTTP only (D7)
         self.work_dir = work_dir  # HTTP only (D12)
+        folders = [store.directory for store in (store,) if store is not None]
+        folders += [work_dir.path] if work_dir is not None else []
+        # Longest first, so a folder inside another is replaced whole.
+        self._server_folders = sorted(
+            {spelling for folder in folders for spelling in _folder_spellings(folder)},
+            key=len,
+            reverse=True,
+        )
         self.local_paths = local_paths
         self.transport = transport
         self.clock = clock
@@ -537,6 +545,12 @@ class OcrService:
         logger.info("job %s: result stored as document %s", job.id, document.id)
         return document.id
 
+    def scrub(self, message: str) -> str:
+        """Hide any server folder left in a message after `public_message` (R23)."""
+        for folder in self._server_folders:
+            message = message.replace(folder, "<server folder>")
+        return message
+
     def result_document(self, job_id: str) -> StoredDocument | None:
         """The stored text of a succeeded HTTP job, while the store keeps it."""
         self.succeeded_pages(job_id)
@@ -571,6 +585,7 @@ class OcrService:
         return removed
 
     def _fail(self, job: Job, message: str, exc: BaseException) -> None:
+        message = self.scrub(message)
         if self.table.finish(job.id, JobState.FAILED, error=message):
             logger.warning("job %s failed (%s)", job.id, type(exc).__name__)
 
@@ -758,6 +773,12 @@ def _path_spellings(path: Path) -> Iterator[str]:
         if spelling not in seen:
             seen.add(spelling)
             yield spelling
+
+
+def _folder_spellings(folder: Path) -> Iterator[str]:
+    yield str(folder)
+    yield str(folder.absolute())
+    yield os.path.realpath(folder)
 
 
 def write_replacing(path: Path, text: str) -> None:
