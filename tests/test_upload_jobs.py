@@ -9,6 +9,7 @@ import io
 import threading
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -281,3 +282,33 @@ async def test_a_hidden_upload_is_no_input_by_id_either(tmp_path: Path) -> None:
         doc_id = checked.structured_content["files"][0]["id"]
         with pytest.raises(ToolError, match="hidden"):
             await s.mcp.call_tool("start_ocr_job", {"document": doc_id})
+
+
+@pytest.mark.parametrize("outcome", ["succeeded", "failed", "cancelled"])
+async def test_the_job_folder_is_gone_before_the_job_ends(tmp_path: Path, outcome: str) -> None:
+    """A client that sees a final state never finds the job folder: it is removed before the
+    job leaves `running`, on every path."""
+    release = threading.Event()
+    hooks = {1: lambda: release.wait(10) and None} if outcome == "cancelled" else None
+    async with http_server(tmp_path, FakeEngineFactory(hooks=hooks)) as s:
+        assert s.service.ocr is not None
+        table = s.service.ocr.table
+        real_finish = table.finish
+        seen: list[list[str]] = []
+
+        def finish(job_id: str, *args: Any, **kwargs: Any) -> bool:
+            seen.append(job_folders(tmp_path))
+            return real_finish(job_id, *args, **kwargs)
+
+        table.finish = finish  # type: ignore[method-assign]
+        second = b"not an image" if outcome == "failed" else png(2)
+        upload_id = await upload(s, ("p1.png", png(1)), ("p2.png", second))
+        started = await s.mcp.call_tool("start_ocr_job", {"upload_id": upload_id})
+        job_id = started.structured_content["job_id"]
+        if outcome == "cancelled":
+            wait_until(s.service.ocr, job_id, Step.RECOGNIZING, page=1)
+            await s.mcp.call_tool("cancel_ocr_job", {"job_id": job_id})
+            release.set()
+        done = await s.mcp.call_tool("get_ocr_job", {"job_id": job_id, "wait_s": 30})
+        assert done.structured_content["state"] == outcome
+        assert seen == [[]]

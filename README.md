@@ -60,7 +60,14 @@ claude mcp add --transport http scanscribe http://localhost:8302/mcp \
   --header "Authorization: Bearer <the token from .env>"
 ```
 
-The server listens on port 8302. Compose refuses to start without `SCANSCRIBE_MCP_TOKEN`. Set `SCANSCRIBE_MCP_PUBLIC_BASE_URL` in `.env` when clients reach the host by another name, because upload links and download URLs are built from it. `SCANSCRIBE_MCP_HOST_PORT` changes the host port, `SCANSCRIBE_MCP_MEM_LIMIT` the memory limit (default `16g`), and `SCANSCRIBE_MCP_LANGS` the languages.
+The server listens on port 8302. Compose refuses to start without `SCANSCRIBE_MCP_TOKEN`. `SCANSCRIBE_MCP_HOST_PORT` changes the host port, and upload links and download URLs follow it; set `SCANSCRIBE_MCP_PUBLIC_BASE_URL` when clients reach the host by another name or through a proxy. `SCANSCRIBE_MCP_MEM_LIMIT` sets the memory limit (default `16g`).
+
+Compose passes only these settings to the container, from `.env` or the shell:
+
+- always: `SCANSCRIBE_MCP_TOKEN`, `SCANSCRIBE_MCP_PUBLIC_BASE_URL`, `SCANSCRIBE_MCP_LANGS` (default `en`), and `SCANSCRIBE_MCP_DEVICE`, which defaults to `gpu:0` here, so a container that can't see the GPU fails its jobs instead of running them on the CPU;
+- when set: `SCANSCRIBE_MCP_DEFAULT_LANG`, `SCANSCRIBE_MCP_MAX_PAGES`, `SCANSCRIBE_MCP_PAGE_TIMEOUT_S`, `SCANSCRIBE_MCP_RETENTION_DAYS`, `SCANSCRIBE_MCP_MAX_FILE_BYTES`, `SCANSCRIBE_MCP_MAX_UPLOAD_BYTES`, `SCANSCRIBE_MCP_UPLOAD_LINK_TTL_S` and `SCANSCRIBE_MCP_UPLOAD_LINK_MAX_FILES`.
+
+Any other variable in `.env` doesn't reach the container; add it to `environment` in `docker-compose.yml`. The storage paths, the model cache and the port are fixed in the image.
 
 Two named volumes keep data across container restarts and rebuilds:
 

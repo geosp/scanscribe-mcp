@@ -16,9 +16,22 @@ services:
     environment:
       # Required: compose refuses to start without it, as the server would.
       SCANSCRIBE_MCP_TOKEN: ${SCANSCRIBE_MCP_TOKEN:?set SCANSCRIBE_MCP_TOKEN in .env (openssl rand -hex 32)}
-      # The address clients use for upload links and download URLs.
-      SCANSCRIBE_MCP_PUBLIC_BASE_URL: ${SCANSCRIBE_MCP_PUBLIC_BASE_URL:-http://localhost:8302}
+      # The address clients use for upload links and download URLs; it follows the host port.
+      SCANSCRIBE_MCP_PUBLIC_BASE_URL: ${SCANSCRIBE_MCP_PUBLIC_BASE_URL:-http://localhost:${SCANSCRIBE_MCP_HOST_PORT:-8302}}
+      # The GPU, so a container that can't see it fails its jobs instead of using the CPU.
+      SCANSCRIBE_MCP_DEVICE: ${SCANSCRIBE_MCP_DEVICE:-gpu:0}
       SCANSCRIBE_MCP_LANGS: ${SCANSCRIBE_MCP_LANGS:-en}
+      # Passed through only when set in .env or the shell; otherwise the server's defaults apply.
+      # Other SCANSCRIBE_MCP_* settings don't reach the container: add them here. The storage
+      # paths and the port are fixed in the image, on the volumes.
+      SCANSCRIBE_MCP_DEFAULT_LANG:
+      SCANSCRIBE_MCP_MAX_PAGES:
+      SCANSCRIBE_MCP_PAGE_TIMEOUT_S:
+      SCANSCRIBE_MCP_RETENTION_DAYS:
+      SCANSCRIBE_MCP_MAX_FILE_BYTES:
+      SCANSCRIBE_MCP_MAX_UPLOAD_BYTES:
+      SCANSCRIBE_MCP_UPLOAD_LINK_TTL_S:
+      SCANSCRIBE_MCP_UPLOAD_LINK_MAX_FILES:
     volumes:
       - documents:/data # uploads, results and job folders: one filesystem, for hard links
       - models:/cache # PaddleX's downloaded OCR models (PADDLE_PDX_CACHE_HOME=/cache/paddlex)
@@ -26,17 +39,18 @@ services:
     # A hung page makes the server exit with code 70 (R28); this brings it back.
     restart: unless-stopped
     healthcheck:
-      # Any HTTP answer means the server is up; /upload/health is a 404 page.
+      # Up means the server answers /upload/health with its 404 page; anything else is down.
       test:
         - CMD
         - python
         - -c
         - |
-          import urllib.request, urllib.error
+          import sys, urllib.request, urllib.error
           try:
               urllib.request.urlopen("http://127.0.0.1:8302/upload/health", timeout=5)
-          except urllib.error.HTTPError:
-              pass
+          except urllib.error.HTTPError as answer:
+              sys.exit(0 if answer.code == 404 else 1)
+          sys.exit(1)
       interval: 30s
       timeout: 10s
       start_period: 30s
