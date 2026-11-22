@@ -28,7 +28,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   token and a wrong token get 401, the right one works; start-up with auth on and no token exits
   with a configuration error; with `ALLOW_LOCAL_PATHS=true`, `input_path` and `output_path` are
   still refused with an error naming upload links.
-- [ ] 1.2 Turn off uvicorn's access log and check every log line of the HTTP flow (D8, R22).
+- [x] 1.2 Turn off uvicorn's access log and check every log line of the HTTP flow (D8, R22).
   Verify: a test captures all log records while a file named `chapter-3.pdf` is uploaded, a job
   runs and fails, and a result is downloaded; no record contains `chapter-3`, the link token, a
   document id path or fake OCR text.

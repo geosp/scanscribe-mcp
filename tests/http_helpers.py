@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import contextlib
 import io
-from collections.abc import AsyncIterator
+import os
+import socket
+import subprocess
+import sys
+import time
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,6 +26,7 @@ from scanscribe_mcp.service import ScanscribeMCPService
 
 from .fakes import FakeEngineFactory
 
+ROOT = Path(__file__).resolve().parent.parent
 BASE_URL = "http://scanscribe.test:8302"
 TOKEN = "test-token-not-a-secret"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -145,3 +151,56 @@ async def run_job(s: HttpServer, **arguments: Any) -> dict[str, Any]:
     done = await s.mcp.call_tool("get_ocr_job", {"job_id": job_id, "wait_s": 30})
     fields: dict[str, Any] = {**done.structured_content, "start": started.structured_content}
     return fields
+
+
+# --- the real server in a process of its own -----------------------------------------------
+
+
+def free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+        return port
+
+
+@contextlib.contextmanager
+def http_process(tmp_path: Path, *args: str) -> Iterator[tuple[subprocess.Popen[str], str]]:
+    """The real HTTP server in a process of its own (tests/http_launcher.py), on a free port.
+
+    Its stdout and stderr are both in `process.stdout`.
+    """
+    port = free_port()
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("MCP_", "SCANSCRIBE_MCP_"))}
+    env |= {
+        "MCP_HOST": "127.0.0.1",
+        "MCP_PORT": str(port),
+        "SCANSCRIBE_MCP_TOKEN": TOKEN,
+        "SCANSCRIBE_MCP_PAGE_TIMEOUT_S": "2",
+        "SCANSCRIBE_MCP_OUTPUT_DIR": str(tmp_path / "documents"),
+        "SCANSCRIBE_MCP_WORK_DIR": str(tmp_path / "work"),
+        "FASTMCP_SHOW_SERVER_BANNER": "false",
+    }
+    process = subprocess.Popen(
+        [sys.executable, "-m", "tests.http_launcher", *args],
+        cwd=ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # uvicorn's access log goes to stdout: read both as one
+        text=True,
+    )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        deadline = time.monotonic() + 30
+        while True:
+            try:
+                httpx.get(f"{base}/upload/none", timeout=1)
+                break
+            except httpx.TransportError:
+                if process.poll() is not None or time.monotonic() > deadline:
+                    raise AssertionError("the HTTP server didn't start") from None
+                time.sleep(0.1)
+        yield process, base
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(10)
