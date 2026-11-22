@@ -30,7 +30,7 @@ it.
   `MCP_PORT=8302`, `--mode http` (D9). Verify: `docker build .` succeeds, and
   `docker run --rm <image> python -c "import scanscribe_mcp, sys; print(sys.prefix)"` prints
   `/app/.venv`.
-- [ ] 1.2 Add `docker-compose.yml` with the GPU reservation, `mem_limit`, `restart:
+- [x] 1.2 Add `docker-compose.yml` with the GPU reservation, `mem_limit`, `restart:
   unless-stopped`, a healthcheck on the HTTP port, the `documents` volume at `/data` and `models`
   at `/cache`, the token from `.env` (required), `SCANSCRIBE_MCP_PUBLIC_BASE_URL` and the port;
   and `.dockerignore` keeping `in/`, `out/`, `data/`, `.env`, `.env.*`, `.venv` and `.git` out of

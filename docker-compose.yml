@@ -1,0 +1,54 @@
+# scanscribe-mcp over HTTP on an NVIDIA GPU (plan D9, R25, R28).
+#
+#   cp .env.example .env      # then set SCANSCRIBE_MCP_TOKEN (openssl rand -hex 32)
+#   docker compose up -d --build
+#
+# Needs the NVIDIA container toolkit on the host. Values come from .env or the environment.
+
+name: scanscribe-mcp
+
+services:
+  scanscribe:
+    build: .
+    image: scanscribe-mcp:latest
+    ports:
+      - "${SCANSCRIBE_MCP_HOST_PORT:-8302}:8302"
+    environment:
+      # Required: compose refuses to start without it, as the server would.
+      SCANSCRIBE_MCP_TOKEN: ${SCANSCRIBE_MCP_TOKEN:?set SCANSCRIBE_MCP_TOKEN in .env (openssl rand -hex 32)}
+      # The address clients use for upload links and download URLs.
+      SCANSCRIBE_MCP_PUBLIC_BASE_URL: ${SCANSCRIBE_MCP_PUBLIC_BASE_URL:-http://localhost:8302}
+      SCANSCRIBE_MCP_LANGS: ${SCANSCRIBE_MCP_LANGS:-en}
+    volumes:
+      - documents:/data # uploads, results and job folders: one filesystem, for hard links
+      - models:/cache # PaddleX's downloaded OCR models (PADDLE_PDX_CACHE_HOME=/cache/paddlex)
+    mem_limit: ${SCANSCRIBE_MCP_MEM_LIMIT:-16g}
+    # A hung page makes the server exit with code 70 (R28); this brings it back.
+    restart: unless-stopped
+    healthcheck:
+      # Any HTTP answer means the server is up; /upload/health is a 404 page.
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request, urllib.error
+          try:
+              urllib.request.urlopen("http://127.0.0.1:8302/upload/health", timeout=5)
+          except urllib.error.HTTPError:
+              pass
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  documents:
+  models:

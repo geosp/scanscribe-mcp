@@ -1,0 +1,17 @@
+# Keep project data, secrets and local environments out of the build context (plan D9).
+# The image copies only pyproject.toml, uv.lock, README.md and src/.
+in/
+out/
+data/
+.env
+.env.*
+.venv/
+.git/
+**/__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+pr-description.md
+# Local, per-user files that hold machine paths or settings
+.mcp.json
+.claude/settings.local.json
