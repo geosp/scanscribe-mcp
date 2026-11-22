@@ -1,5 +1,40 @@
 # Notes · A working scanscribe MCP server
 
+## scanscribe API
+
+Read on 2026-11-21 at scanscribe tag `v0.2.0` (`src/scanscribe/__init__.py`, `api.py`,
+`engine.py`, `pages.py`, `output.py`), plus its README section "Use as a library" and ADR-0001 to
+ADR-0003.
+
+`scanscribe.__all__` is exactly: `IMAGE_EXTENSIONS`, `EngineFactory`, `EngineMissingError`,
+`InputError`, `OcrEngine`, `PageImage`, `PageSource`, `ProgressCallback`, `ScanscribeError`,
+`UsageError`, `format_pages`, `load_engine`, `ocr_source`, `open_source`, `transcribe`. This plan
+uses only `load_engine`, `open_source`, `ocr_source`, `format_pages`, `PageSource`, `OcrEngine`,
+`PageImage`, `IMAGE_EXTENSIONS` and the four error types.
+
+| Name | Behaviour the plan relies on |
+| --- | --- |
+| `load_engine(lang, device, *, on_device=None) -> OcrEngine` | imports Paddle only here; raises `EngineMissingError` with "the OCR engine is not installed; install one build: `uv sync --extra gpu` (NVIDIA GPU) or `uv sync --extra cpu`"; calls `on_device(resolved)` before building the engine, so the device is known during a first-run model download |
+| device choice | `device=None` → `gpu:0` on a CUDA build that sees a GPU, else `cpu` |
+| `open_source(path, dpi, columns) -> PageSource` | a folder is read as images, any other path as a PDF; `UsageError` for `dpi`/`columns` < 1 or a missing path; the pre-check decodes every image (or sizes every PDF page) and raises `InputError` for an unreadable or too narrow page; messages contain the full path |
+| `PageSource` | context manager; `len(source)` is the page count after the pre-check; `close()` releases the PDF |
+| `ocr_source(source, engine, on_page=None) -> list[list[str]]` | calls `on_page(n, total)` before each page; an exception from it propagates and stops the run before that page is recognized |
+| `format_pages(pages) -> str` | `--- Page N ---` then the lines; pages joined by a blank line |
+| folder order | regular, non-hidden files with an `IMAGE_EXTENSIONS` suffix in any case, in natural order (digit runs as numbers, case-folded) |
+| `IMAGE_EXTENSIONS` | `.png .jpg .jpeg .tif .tiff .bmp .webp` |
+| one job per process | the engine wraps each call in `contextlib.redirect_stdout(sys.stderr)`, and pdfium isn't thread safe |
+
+`transcribe` isn't used: it gives no hook between the pre-check and OCR for R4 and R27 (D5).
+
+## R27 · PDF page size check
+
+pypdfium2 is already in the lock through scanscribe; it becomes a direct dependency for this check
+only. In the worker thread, before `open_source`, open the PDF, read each page's width and height
+in points, and refuse a page where `ceil(w × dpi / 72) × ceil(h × dpi / 72)` exceeds
+`MAX_PAGE_PIXELS`, then close it. It runs only in the worker, so pdfium is still used from one
+thread. Image pages need no check of ours: Pillow refuses images above twice its
+`MAX_IMAGE_PIXELS` (~179 MP), and scanscribe reports that as `InputError`.
+
 ## D1 · What is copied from pandoc-mcp, and what changes
 
 Read on 2026-11-21 at pandoc-mcp `cbe8023` and mcp-service-kit `v0.2.1`.
@@ -31,56 +66,71 @@ the kit's `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT` and `MCP_AUTH_ENABLED`.
 | `MAX_PAGES` | 500 | R4 |
 | `MIN_DPI`, `MAX_DPI` | 72, 400 | R3 |
 | `MAX_COLUMNS` | 8 | R3 |
+| `MAX_PAGE_PIXELS` | 100000000 | R27 |
 | `MAX_QUEUED` | 20 | R6 |
 | `QUEUE_TIMEOUT_S` | 3600 | R7 |
 | `JOB_RETENTION_S` | 86400 | finished jobs listed |
 | `MAX_INLINE_CHARS` | 50000 | R13 |
 | `ALLOW_LOCAL_PATHS` | stdio only | R2, R14 |
 | `TOKEN` | unset | R19 |
-| `PUBLIC_BASE_URL` | `http://localhost:8302` | R20 |
+| `PUBLIC_BASE_URL` | `http://localhost:<MCP_PORT>` | R20; set it behind a proxy or in Docker |
 | `OUTPUT_DIR` | `data/documents` | R20 |
 | `WORK_DIR` | `data/work` | job folders for uploads and zips |
 | `RETENTION_DAYS` | 7 | R20 |
 | `MAX_FILE_BYTES` | 200 MB | R16 |
 | `MAX_UPLOAD_BYTES` | 2 GB | R16, R17 |
 | `UPLOAD_LINK_TTL_S` | 600 | R15 |
-| `UPLOAD_LINK_MAX_FILES` | 200 | R15 |
+| `UPLOAD_LINK_MAX_FILES` | 100 | R15; default `max_files`; values above 200 are rejected at start-up |
 | `UPLOAD_LINK_MAX_ACTIVE` | 100 | open links at once |
 
-Port 8302 keeps it apart from pandoc-mcp's 8301 on the same host.
+The Docker image uses port 8302, apart from pandoc-mcp's 8301 on the same host.
 
 ## D7 · Turning an upload into a scanscribe input
 
-`open_source` takes a path: a folder of images, or a file read as a PDF. A job folder
-`WORK_DIR/<job id>/` is made for each job from an upload or document and deleted when the job ends.
+`open_source` takes a path: a folder of images, or a file read as a PDF.
+
+At `start_ocr_job` (in the event loop, cheap): the server snapshots the document ids of the files
+the link has received in full (a file is stored only after its last byte arrives, so a partial
+file is never in the snapshot), closes the link, and checks the snapshot's kind and, for images,
+its count. The job keeps the ids; documents live for `RETENTION_DAYS`, far longer than the queue
+timeout, and purge skips documents a live job uses.
+
+In the worker, when the job starts: it builds `WORK_DIR/<job id>/` and deletes it when the job
+ends in any state. `WORK_DIR` is emptied at start-up, because no job survives a restart.
 
 | Upload contents | Job input |
 | --- | --- |
 | one `.pdf` | the stored file's path, used in place |
 | one `.zip` | entries extracted into `<job>/pages/`, then that folder |
-| 1–200 images | hard links (or copies) into `<job>/pages/` under their stored names, then that folder |
-| anything else, or a mix | tool error at `start_ocr_job` |
+| 1–200 images | hard links (copies if on another filesystem) into `<job>/pages/`, then that folder |
+| several PDFs or zips, anything else, or a mix | tool error at `start_ocr_job` |
 
 Zip rules (R17), checked from the central directory before anything is written:
-- entry count ≤ `MAX_PAGES`; directories are skipped, every other entry must have an
-  `IMAGE_EXTENSIONS` suffix, so nested zips are refused;
-- the name is reduced with `safe_filename`; an entry whose reduced name differs from its base
-  name only by case or is a duplicate is refused;
+- an entry name containing `..` as a part, starting with `/` or `\`, or with a drive letter is
+  refused;
+- directory entries are skipped; hidden names (any part starting with `.`, and everything under
+  `__MACOSX/`) are skipped, as scanscribe skips hidden files in folders;
+- every other entry must have an `IMAGE_EXTENSIONS` suffix, so nested zips are refused;
+- the page name is the entry's base name, and two entries with the same base name are refused,
+  so `chapter/p1.png` (as a zipped folder holds it) becomes `p1.png`;
 - symlink entries (Unix mode `S_IFLNK` in `external_attr`) are refused;
-- the sum of `file_size` ≤ `MAX_UPLOAD_BYTES`, and extraction streams each entry with a running
-  byte count, so a lying header can't exceed it;
-- hidden names (leading `.`, e.g. `__MACOSX/._p1.png` after reduction) are skipped, as scanscribe
-  skips them in folders.
+- at most `MAX_PAGES` entries; the sum of `file_size` ≤ `MAX_UPLOAD_BYTES`, and extraction
+  streams each entry with a running byte count, so a header that understates its size can't
+  exceed the limit.
 
-Pages then follow scanscribe's own natural order, because the folder goes through `open_source`.
+Pages then follow scanscribe's natural order, because the folder goes through `open_source`.
 
 ## D9 · The Docker image
 
 - `python:3.12-slim`, `git` for the Git dependencies, uv copied from `ghcr.io/astral-sh/uv` at
   CI's version.
 - `uv sync --frozen --no-dev --extra ${ENGINE}` with `ENGINE=gpu` by default.
-- `PADDLE_PDX_CACHE_HOME=/cache/paddlex` on a named volume `models`; `/data` on a named volume
-  `documents`. Both owned by an unprivileged user (uid 1000).
+- `PADDLE_PDX_CACHE_HOME=/cache/paddlex` on the named volume `models` at `/cache`; the named
+  volume `documents` at `/data`, with `SCANSCRIBE_MCP_OUTPUT_DIR=/data/documents` and
+  `SCANSCRIBE_MCP_WORK_DIR=/data/work` set in the image, so uploads and job folders share one
+  filesystem and hard links work. Both owned by an unprivileged user (uid 1000).
+- `PATH=/app/.venv/bin:$PATH`, `MCP_PORT=8302`; compose sets `SCANSCRIBE_MCP_PUBLIC_BASE_URL`,
+  a memory limit (`mem_limit`, default 16g) and `restart: unless-stopped`.
 - Compose asks for the GPU with `deploy.resources.reservations.devices: [{driver: nvidia, count:
   1, capabilities: [gpu]}]`.
 - If the slim image lacks a library the wheels need (seen as an `ImportError` or a CPU fallback on
@@ -94,4 +144,6 @@ device and fd 1 at stderr, so handlers and children read EOF and their stray out
 wire." It writes the protocol through its own wrapper of the original descriptor, so
 `contextlib.redirect_stdout(sys.stderr)` inside scanscribe's engine only changes the Python
 object, never the wire. The worker thread is a plain thread of the same process, so this covers
-it too. The subprocess test in phase 01 checks this end to end with a fake engine that prints.
+it too. The protection starts when the transport starts: a `print()` at import or in `main()`
+before `run()` would still reach the wire, which is what task 01/4.2's failing case injects.
+`fastmcp>=4.2.4` becomes a direct dependency so a re-resolve can't drop below the version read. The subprocess test in phase 01 checks this end to end with a fake engine that prints.

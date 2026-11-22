@@ -4,8 +4,8 @@ title: stdio server with jobs and a fake engine
 status: draft
 branch: null
 base: null
-delivers: [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R21, R22, R24]
-design_review: { status: changes-requested, rounds: 1, last: 2026-11-21 }
+delivers: [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R21, R22, R24, R26, R27]
+design_review: { status: passed, rounds: 1, last: 2026-11-21 }
 impl_review: { status: none, rounds: 0, last: null }
 approved: null
 ---
@@ -22,38 +22,46 @@ slices or into a local file. Every test runs on the base install with a fake eng
 
 ### 1. Project and configuration
 
-- [ ] 1.1 Add the dependencies to `pyproject.toml`: scanscribe at tag v0.2.0 and mcp-service-kit
-  at v0.2.1 as Git dependencies; the `gpu` and `cpu` extras pulling `scanscribe[gpu]` /
-  `scanscribe[cpu]`; scanscribe's `[tool.uv] conflicts`, `paddlepaddle-cu126` index and
-  `[tool.uv.sources]` entry; the `scanscribe-mcp` script; dev deps `pytest-asyncio` and `httpx`;
-  mypy overrides for untyped modules. Relock with CI's uv (D1, D9). Verify: `uv sync --locked`
-  on the base install, and `uv lock --check` with CI's uv version, both pass;
-  `uv sync --extra gpu --dry-run` resolves `paddlepaddle-gpu` from the cu126 index.
+- [ ] 1.1 Add the dependencies to `pyproject.toml`: scanscribe at tag v0.2.0 and the kit at
+  v0.2.1 as Git dependencies, `fastmcp>=4.2.4` and `pypdfium2` directly (notes.md#d10,
+  notes.md#r27); the `gpu` and `cpu` extras pulling `scanscribe[gpu]` / `scanscribe[cpu]`;
+  scanscribe's `[tool.uv] conflicts`, `paddlepaddle-cu126` index and `[tool.uv.sources]` entry;
+  the `scanscribe-mcp` script; dev deps `pytest-asyncio` and `httpx`; mypy overrides for untyped
+  modules. Relock with CI's uv (D1, D9). Verify: `uv sync --locked` on the base install and
+  `uv lock --check` with CI's uv pass; `uv sync --extra gpu --dry-run` resolves
+  `paddlepaddle-gpu` from the cu126 index; the PR's `licenses` job passes, and any licence added
+  to its allow-list gets a line in `docs/decision-log.md`.
 - [ ] 1.2 Add `config.py`: `ScanscribeMcpConfig` with the phase 01 variables from
   [notes.md#configuration](../notes.md#configuration) and `AppConfig` with
   `local_paths_allowed` (D1, R2, R3). Verify: unit tests for defaults, env overrides, `LANGS`
-  parsing and the stdio-only default for local paths.
+  parsing, and `ALLOW_LOCAL_PATHS` unset (stdio true, HTTP false) and set.
 
 ### 2. Jobs and the worker
 
-- [ ] 2.1 Add `jobs.py`: the `Job` record (id, state, input kind, options, page, total, device,
-  error, pages, timestamps), the job table with its lock, and the FIFO queue with the length
-  limit and queue timeout (D2, R5, R6, R7). Verify: unit tests with an injected clock for order,
-  the 21st job refused, expiry, and purge of finished jobs after `JOB_RETENTION_S`.
-- [ ] 2.2 Add the worker thread to `ocr_service.py`: it loads the engine through the injected
-  factory on the first job and on a language change, reporting the device through `on_device`;
-  runs `open_source`, the page-limit check, `ocr_source` and `format_pages`; and records
-  `checking pages`, page progress and the final state (D3, D5, R4, R8, R11, R12). Verify: unit
-  tests with a fake engine and fake factory: one factory call for two `en` jobs, two calls for
-  `en` then `fr`, a 501-page folder fails before the engine runs, `EngineMissingError` makes the
-  job `failed` and the next job still runs.
-- [ ] 2.3 Add cancelling: a per-job flag, `on_page` raising `JobCancelled`, a check after the
-  pre-check, and queued jobs cancelled without running (D4, R10). Verify: a fake engine that
-  blocks on page 3 until released; after cancel, it sees no page 4 and the state is `cancelled`;
-  cancelling a succeeded job leaves it `succeeded`.
-- [ ] 2.4 Map scanscribe's `UsageError` and `InputError` to job errors and tool errors, and log
-  only job ids, kinds, sizes and page counts (R22). Verify: a test captures all log records of a
-  failing job over `chapter-3.pdf` and finds neither the name nor any fake OCR text.
+- [ ] 2.1 Add `jobs.py`: the `Job` record (id, state, step, input kind, options, page, total,
+  page start time, device, error, pages, timestamps), the job table under a lock, and the FIFO
+  queue; R6 counts `queued` jobs in the table, and a queued job past the timeout reads as
+  `expired` (D2, R5, R6, R7). Verify: unit tests with an injected clock for order, the 21st job
+  refused, 20 cancelled jobs not counted, expiry on read, the worker skipping cancelled and
+  expired entries, and purge of finished jobs after `JOB_RETENTION_S`.
+- [ ] 2.2 Add the worker thread to `ocr_service.py`: load the engine through the injected factory
+  at the first job, dropping the old engine before a language change and after an engine error;
+  check PDF page sizes (R27, notes.md#r27); run `open_source`, the page limit, `ocr_source` and
+  `format_pages`; record the step, page progress and final state; run each job in a catch-all
+  (D2, D3, D5, R4, R8, R11, R12, R26, R27). Verify: fake-engine tests: one factory call for two
+  `en` jobs, two for `en` then `fr` with the first engine released before the second load; a
+  501-page PDF fails after the pre-check without the engine; a 200 × 200 inch PDF page fails
+  before the pre-check; `EngineMissingError` and a `RuntimeError` on page 2 each fail the job and
+  the next job succeeds.
+- [ ] 2.3 Add cancelling: a per-job flag checked after the engine loads and after the pre-check,
+  `on_page` raising `JobCancelled`, and queued jobs cancelled without running (D4, R10). Verify:
+  a fake engine that blocks on page 3 until released sees no page 4 and the state is
+  `cancelled`; a cancel during a slow fake engine load stops before the pre-check; cancelling a
+  succeeded job leaves it `succeeded`.
+- [ ] 2.4 Map scanscribe's `UsageError` and `InputError` to job errors, and log only job ids,
+  input kinds, sizes, page counts and error classes (R22). Verify: a test captures every log
+  record of a failing job over a file named `chapter-3.pdf` and finds neither the name, the error
+  message nor any fake OCR text.
 
 ### 3. Tools
 
@@ -62,30 +70,34 @@ slices or into a local file. Every test runs on the base install with a fake eng
   `tool_errors()` (D1). Verify: a `fastmcp.Client` test lists exactly the phase 01 tools and
   reads the instructions.
 - [ ] 3.2 Add `features/start_ocr_job/tool.py`: exactly one input (only `input_path` works in this
-  phase; the others return "needs the HTTP server"), `lang`, `dpi`, `columns`, option checks,
-  returns the job id and state (R1, R2, R3, R6). Verify: client tests for no input, two inputs,
-  a bad lang, `dpi: 600`, `columns: 9`, and a full queue.
+  phase; the others return "needs the HTTP server"), `lang`, `dpi`, `columns`, option checks, an
+  `input_path` folder counted from file names, and the job id and state in the reply (R1, R2,
+  R3, R4, R6, D5). Verify: client tests for no input, two inputs, a bad lang, `dpi: 600`,
+  `columns: 9`, a 501-image folder, a full queue, and `input_path` with local paths turned off
+  returning an error that names upload links.
 - [ ] 3.3 Add `features/get_ocr_job/tool.py` with `wait_s` 0–60 polling every 0.5 s (R8, R9).
   Verify: a client test where a fake job finishes after ~1 s and `wait_s=30` returns in under
-  3 s with `succeeded`, page total and device; an unknown id is a tool error.
+  3 s with `succeeded`, page total and device; a running job reports its step and seconds on
+  the current page; an unknown id is a tool error.
 - [ ] 3.4 Add `features/cancel_ocr_job/tool.py` (R10). Verify: client tests for queued, running
   and finished jobs.
 - [ ] 3.5 Add `features/get_ocr_result/tool.py`: inline text up to `MAX_INLINE_CHARS`,
-  `first_page` / `last_page` slices, and `output_path` when local paths are allowed (R13, R14).
-  Verify: client tests for a small result inline, a large one not inline with a page count,
-  a slice of pages 10–12 with their markers, an out-of-range slice as a tool error, and
-  `output_path` writing the exact text.
+  `first_page` / `last_page` slices, and `output_path` when local paths are allowed (R2, R13,
+  R14). Verify: client tests for a small result inline, a large one not inline with a page
+  count, a slice of pages 10–12 with their markers, an out-of-range slice as a tool error,
+  `output_path` writing the exact text, and `output_path` with local paths turned off refused.
 
 ### 4. End to end and documentation
 
 - [ ] 4.1 Add a test fixture module with the fake engine and a session-end check that `paddle`
-  and `paddleocr` were never imported, and generate small fixture images and a two-page PDF in
-  the tests (no book material) (R24). Verify: `uv run pytest` passes on the base install and the
-  check fails when a test imports `paddle` on purpose.
-- [ ] 4.2 Add a subprocess test that starts the server over real stdio with a test-only engine
-  factory whose engine prints to stdout, runs a job through `input_path`, and parses every
-  stdout line as MCP (D10, R21). Verify: the test passes, and fails if the server is changed to
-  `print()` a line to stdout.
+  and `paddleocr` were never imported; generate small fixture images and PDFs in the tests (no
+  book material) (R24). Verify: `uv run pytest` passes on the base install, and the check fails
+  when a test puts a stub module named `paddle` into `sys.modules` on purpose.
+- [ ] 4.2 Add `tests/stdio_launcher.py`, which builds the server with the fake engine factory and
+  runs it over stdio, and a subprocess test that runs a job through it and parses every stdout
+  line as MCP; the fake engine prints to stdout while recognizing (D3, D10, R21). Verify: the
+  test passes, and a variant of the launcher that prints one line before the server starts
+  makes it fail.
 - [ ] 4.3 Write the README (tools, stdio setup with `claude mcp add`, configuration, the
   one-job-at-a-time limit) and `docs/ARCHITECTURE.md` (layers, a job step by step), and update
   the AGENTS.md checks if they change. Verify: the link checker in CI passes; every tool and
