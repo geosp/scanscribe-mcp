@@ -79,7 +79,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   build zips in memory with `../x.png`, `/x.png`, a symlink entry, a nested zip, `a/1.png` with
   `b/1.png`, and a header that understates its size each fail before OCR with nothing outside the
   job folder; `chapter/p1.png` is accepted as `p1.png`; `__MACOSX/` entries are skipped.
-- [ ] 4.3 Accept `upload_id` and `document` in `start_ocr_job`; a `document` must be an uploaded
+- [x] 4.3 Accept `upload_id` and `document` in `start_ocr_job`; a `document` must be an uploaded
   PDF or zip, and images and zips are counted at start (D5, D7, R1, R4). Verify: client tests for
   both inputs, an unknown id, a result `.txt` id refused, an upload with no files yet, and a
   501-entry zip refused at start.
