@@ -5,12 +5,35 @@ description = "MCP server that OCRs scanned PDFs and page-image folders into pag
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 
-dependencies = []
+dependencies = [
+    "fastmcp>=4.2.4",
+    "mcp-service-kit @ git+https://github.com/geosp/mcp-service-kit@v0.2.1",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.16",
+    "pypdfium2>=5.13.0",
+    "scanscribe @ git+https://github.com/geosp/scanscribe@v0.2.0",
+]
+
+[project.scripts]
+scanscribe-mcp = "scanscribe_mcp.server:main"
+
+[project.optional-dependencies]
+# Install exactly one OCR engine build: `uv sync --extra gpu` or `uv sync --extra cpu`.
+# The extras, the conflicts rule, the index and its source are copied from scanscribe v0.2.0:
+# uv doesn't inherit them from a dependency (scanscribe ADR-0003).
+cpu = [
+    "scanscribe[cpu] @ git+https://github.com/geosp/scanscribe@v0.2.0",
+]
+gpu = [
+    "scanscribe[gpu] @ git+https://github.com/geosp/scanscribe@v0.2.0",
+]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28",
     "mypy>=1.13",
     "pytest>=8.3",
+    "pytest-asyncio>=1.4",
     "pyyaml>=6",
     "ruff>=0.8",
 ]
@@ -23,6 +46,19 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-name = "scanscribe_mcp"
 
+[tool.uv]
+conflicts = [
+    [{ extra = "cpu" }, { extra = "gpu" }],
+]
+
+[[tool.uv.index]]
+name = "paddlepaddle-cu126"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+explicit = true
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddlepaddle-cu126" }
+
 [tool.ruff]
 line-length = 100
 
@@ -34,13 +70,16 @@ strict = true
 packages = ["scanscribe_mcp"]
 mypy_path = "src"
 
-# A dependency without type information (no py.typed marker), or one installed
-# only with an optional extra, needs an override like this:
-# [[tool.mypy.overrides]]
-# module = ["untyped_package", "untyped_package.*"]
-# ignore_missing_imports = true
+# pypdfium2 ships no py.typed marker.
+[[tool.mypy.overrides]]
+module = ["pypdfium2", "pypdfium2.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+# pytester runs the R24 guard in a session of its own (tests/test_paddle_guard.py).
+addopts = ["-p", "pytester"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 # tests/test_ci_gate.py imports the CI gate script directly.
 pythonpath = [".github/scripts"]
