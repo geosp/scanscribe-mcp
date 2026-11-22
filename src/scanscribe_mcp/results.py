@@ -85,7 +85,13 @@ def job_summary(fields: dict[str, Any]) -> str:
 
 
 def reply(lines: list[str], structured: dict[str, Any], *texts: str) -> ToolResult:
-    """A summary text block, then any further text blocks, plus structured content."""
-    content = [TextContent(type="text", text="\n".join(lines))]
+    """A summary text block, then any further text blocks, plus structured content.
+
+    Some clients (Claude Code among them) give the model only the structured content when
+    there is one, so the summary goes into it as `message` too; a tool whose text blocks
+    matter puts them in its structured content as well.
+    """
+    message = "\n".join(lines)
+    content = [TextContent(type="text", text=message)]
     content += [TextContent(type="text", text=text) for text in texts]
-    return ToolResult(content=content, structured_content=structured)
+    return ToolResult(content=content, structured_content={**structured, "message": message})

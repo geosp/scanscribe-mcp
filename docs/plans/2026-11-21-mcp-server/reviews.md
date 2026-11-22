@@ -161,3 +161,6 @@ Reviewers: contract ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/impl-review
 | J14 | Nit | contract | R5/R7: parts tested only at `JobTable` level | accepted: the tool tests cover queue order and full queue; expiry needs an injected clock in the service, not worth it now |
 
 Fixes applied 2026-11-21 (owner's choice): J1, J5, J7, J9, J10, J12, J13 fixed; the rest accepted. The review stays passed; nothing is open.
+
+## 2026-11-21 · note · phase 01 · manual check finding
+Task 4.4 showed that Claude Code gives the model only a tool's `structuredContent`, so `get_ocr_result`'s inline text never reached the agent (R13). Fixed test first: every reply carries its summary as `message`, and `get_ocr_result` its text as `text`, in structured content (test_small_result_inline, test_large_result_not_inline, test_page_slice_with_markers). Owner's choice; the manual check reruns the inline call.

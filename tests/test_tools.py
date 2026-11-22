@@ -322,6 +322,8 @@ async def test_small_result_inline(make_client: MakeClient, tmp_path: Path) -> N
     result = await client.call_tool("get_ocr_result", {"job_id": job_id})
     assert result.content[1].text == expected_text(3)
     assert result.structured_content["inline"] is True
+    # Claude Code shows the model only structuredContent, so the text must be there too.
+    assert result.structured_content["text"] == expected_text(3)
     assert result.structured_content["pages"] == 3
 
 
@@ -333,6 +335,8 @@ async def test_large_result_not_inline(make_client: MakeClient, tmp_path: Path) 
     summary = result.content[0].text
     assert "30 pages" in summary and "first_page" in summary and "output_path" in summary
     assert result.structured_content["inline"] is False
+    assert result.structured_content["text"] is None
+    assert "first_page" in result.structured_content["message"]
 
 
 async def test_page_slice_with_markers(make_client: MakeClient, tmp_path: Path) -> None:
@@ -347,6 +351,7 @@ async def test_page_slice_with_markers(make_client: MakeClient, tmp_path: Path) 
         "--- Page 12 ---\npage 12\ngray 12"
     )
     assert result.structured_content["next_first_page"] is None
+    assert result.structured_content["text"] == result.content[1].text
 
 
 async def test_long_slice_is_cut_at_a_page(make_client: MakeClient, tmp_path: Path) -> None:

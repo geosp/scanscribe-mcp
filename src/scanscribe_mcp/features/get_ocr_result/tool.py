@@ -63,6 +63,8 @@ def register_tool(mcp: FastMCP, ocr: OcrService) -> None:
             "last_page": result.last_page,
             "next_first_page": result.next_first_page,
             "inline": result.text is not None,
+            # The text itself, for clients that show the model only structured content.
+            "text": result.text,
         }
         ways = ["ask for page ranges with first_page and last_page"]
         if ocr.local_paths:
