@@ -44,7 +44,7 @@ it.
 
 ### 2. Documentation and project records
 
-- [ ] 2.1 Add the Docker section to the README: the NVIDIA container toolkit prerequisite,
+- [x] 2.1 Add the Docker section to the README: the NVIDIA container toolkit prerequisite,
   `cp .env.example .env`, `docker compose up -d --build`, `claude mcp add --transport http`, what
   the volumes hold, and how a restart recovers a hung job. Verify: the link checker passes; the
   commands match the compose file.
