@@ -452,7 +452,7 @@ unwanted.
 
 | Phase | Title | Status | Tasks |
 | --- | --- | --- | --- |
-| 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26–R28) | in-progress | 11/16 |
+| 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26–R28) | in-progress | 15/16 |
 | 02 | HTTP, token, uploads and the document store (R15–R20, R22, R23, R28, R29) | approved | 0/15 |
 | 03 | Docker on the GPU and the manual GPU check (R25) | approved | 0/8 |
 

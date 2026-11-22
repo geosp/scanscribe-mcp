@@ -22,7 +22,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
 
 ### 1. Project and configuration
 
-- [ ] 1.1 Add the dependencies to `pyproject.toml`: scanscribe at tag v0.2.0 and the kit at
+- [x] 1.1 Add the dependencies to `pyproject.toml`: scanscribe at tag v0.2.0 and the kit at
   v0.2.1 as Git dependencies, `fastmcp>=4.2.4` and `pypdfium2` directly (notes.md#d10,
   notes.md#r27); the `gpu` and `cpu` extras pulling `scanscribe[gpu]` / `scanscribe[cpu]`;
   scanscribe's `[tool.uv] conflicts`, `paddlepaddle-cu126` index and `[tool.uv.sources]` entry;
@@ -111,7 +111,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   line as MCP; the fake engine prints to stdout while recognizing (D3, D10, R21). Verify: the
   test passes, and a variant of the launcher that prints one line before the server starts
   makes it fail.
-- [ ] 4.3 Write the README (tools, stdio setup with `claude mcp add`, configuration, the
+- [x] 4.3 Write the README (tools, stdio setup with `claude mcp add`, configuration, the
   one-job-at-a-time limit) and `docs/ARCHITECTURE.md` (layers, a job step by step), and update
   the AGENTS.md checks if they change; add the four job tools and the phase 01 variables to
   `docs/decision-log.md`. Verify: the link checker in CI passes; every tool and variable in the
