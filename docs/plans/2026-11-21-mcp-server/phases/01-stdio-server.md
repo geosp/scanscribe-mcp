@@ -60,7 +60,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
   `cancelled`; a cancel during a slow pre-check stops before the factory is called; a cancel
   during a slow fake engine load stops before page 1; cancelling a succeeded job leaves it
   `succeeded`.
-- [ ] 2.4 Rewrite error messages as D11 says, and log only job ids, input kinds, sizes, page
+- [x] 2.4 Rewrite error messages as D11 says, and log only job ids, input kinds, sizes, page
   counts and error classes (D11, R22, R26). Verify: a test captures every log record of a failing
   job over a file named `chapter-3.pdf` and finds neither the name, the error message nor any fake
   OCR text; an unreadable page's error names the page as the caller gave it; a fake
