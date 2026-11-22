@@ -473,3 +473,7 @@ unwanted.
   The browser form gets no real-browser run; a test pins its contract with the route. The GPU
   over HTTP is covered by phase 03's manual check (task 03/3.1). No requirement or decision
   changes. Owner's decision.
+- 2026-11-22 · Task 03/1.1 found that `python:3.12-slim` lacks `libgomp.so.1`, which PaddlePaddle
+  loads, so the image also installs Debian's `libgomp1`. With it, `paddle.utils.run_check()` passes
+  on the GPU inside the container, so D9 stands and the `nvidia/cuda` fallback isn't needed. The
+  assumption that the cu126 wheels need only the host driver holds once that one library is there.

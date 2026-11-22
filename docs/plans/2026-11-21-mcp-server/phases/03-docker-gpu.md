@@ -22,7 +22,7 @@ it.
 
 ### 1. Image and compose
 
-- [ ] 1.1 Add the `Dockerfile` from notes.md#d9: `python:3.12-slim`, `git`, pinned uv, copying
+- [x] 1.1 Add the `Dockerfile` from notes.md#d9: `python:3.12-slim`, `git`, pinned uv, copying
   only `pyproject.toml`, `uv.lock`, `README.md` and `src/`, `uv sync --frozen --no-dev --extra
   gpu`, an unprivileged user,
   `PATH=/app/.venv/bin:$PATH`, `PADDLE_PDX_CACHE_HOME=/cache/paddlex`,
