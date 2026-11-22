@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import pkgutil
 from pathlib import Path
 
@@ -42,6 +43,22 @@ LINK_GONE_PAGE = (
     "<p>Links work for a few minutes and a limited number of files. "
     "Ask the assistant for a new one.</p>"
 )
+
+
+STUCK_EXIT_CODE = 70
+"""The exit code of an HTTP server whose page hung (R28): its supervisor restarts it."""
+
+
+def exit_when_stuck() -> None:
+    """Over HTTP, a hung page ends the process, so compose's restart policy recovers it (R28).
+
+    The worker may be stuck inside the engine, so no graceful shutdown is tried: the watchdog
+    has already failed the job and logged its id; the logs are flushed, then the process ends.
+    """
+    logger.critical("a page hung; exiting with code %d so the server restarts", STUCK_EXIT_CODE)
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    os._exit(STUCK_EXIT_CODE)
 
 
 class ScanscribeMCPService(BaseService):
@@ -80,6 +97,7 @@ class ScanscribeMCPService(BaseService):
             store=store,
             uploads=uploads,
             work_dir=work_dir,
+            on_stuck=exit_when_stuck if self.config.server.transport == "http" else None,
         )
         self.ocr.start()
         logger.info(

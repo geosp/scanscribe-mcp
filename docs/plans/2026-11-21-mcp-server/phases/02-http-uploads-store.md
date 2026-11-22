@@ -86,7 +86,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
 - [x] 4.4 Swap server paths in every job and tool error for the caller's own names (R23). Verify:
   a test with an unreadable uploaded `p7.png` checks that the error names `p7.png` and contains
   neither the resolved `WORK_DIR` nor the resolved `OUTPUT_DIR`; the job id itself may appear.
-- [ ] 4.5 Over HTTP, make R28's watchdog exit the process with a non-zero code after it marks the
+- [x] 4.5 Over HTTP, make R28's watchdog exit the process with a non-zero code after it marks the
   job failed and logs the job id (R28). Verify: a subprocess test starts the HTTP server with a
   fake engine that blocks past a 2 s timeout and sees the process exit non-zero.
 
