@@ -119,20 +119,22 @@ Reviewers: contract ✅ (raw: docs/reviews/2026-11-21-mcp-server/raw/impl-review
 
 | ID | Sev | Lens | Finding | Resolution |
 | --- | --- | --- | --- | --- |
-| I1 | Major | contract | R28: no watchdog while page 1 renders or during the pre-check; a hang there never fails the job | open |
-| I2 | Major | contract | R22: a symlink-loop `input_path` raises RuntimeError past `tool_errors()`; fastmcp logs the path in a traceback | open |
-| I3 | Nit | contract | R26: catch-all is `except Exception`; SystemExit/KeyboardInterrupt in the engine ends the worker | open |
-| I4 | Nit | contract | R28: race between the stuck check in `start_job` and the watchdog's `fail_queued` | open |
-| I5 | Nit | contract | D11: only the input path is rewritten; other server paths in scanscribe errors pass through (phase 02 R23) | open |
-| I6 | Nit | contract | R27: size check only when `is_file()`; a FIFO/device is read as PDF unchecked | open |
-| I7 | Nit | contract | R27/D5: size loop walks every page before the R4 count check | open |
-| I8 | Nit | contract | R2: some errors (bad lang, two inputs, output_path with a range) come before the local-path error | open |
-| I9 | Nit | contract | R2: `output_path` over HTTP not tested | open |
-| I10 | Nit | contract | R14: `~/out.txt` accepted via expanduser though the path "must be absolute" | open |
-| I11 | Nit | contract | D6: `write_replacing` leaves a transient temp file next to `output_path` | open |
-| I12 | Nit | contract | R10: cancel during the last page ends `succeeded` although the reply said it would stop | open |
-| I13 | Nit | contract | R12: test uses a hand-written EngineMissingError, not `scanscribe.load_engine` | open |
-| I14 | Nit | contract | R21: stdio test doesn't join the stdout reader before asserting | open |
-| I15 | Nit | contract | R21: launcher runs `server.run()`, not the production `main()` | open |
-| I16 | Nit | contract | R24: guard checks only the parent session at its end | open |
-| I17 | Nit | contract | 4.4: `expected.txt` ends with a newline, `check.txt` doesn't; `diff` never reads identical | open |
+| I1 | Major | contract | R28: no watchdog while page 1 renders or during the pre-check; a hang there never fails the job | fixed: test_a_hung_first_render_trips_the_watchdog, test_a_hung_pre_check_trips_the_watchdog (tests/test_watchdog.py); ocr_service.py; R28, D2 updated |
+| I2 | Major | contract | R22: a symlink-loop `input_path` raises RuntimeError past `tool_errors()`; fastmcp logs the path in a traceback | fixed: test_unexpected_tool_error_hides_the_path_from_logs_and_client (tests/test_tools.py); results.py tool_errors |
+| I3 | Nit | contract | R26: catch-all is `except Exception`; SystemExit/KeyboardInterrupt in the engine ends the worker | accepted: Paddle doesn't raise SystemExit or KeyboardInterrupt in a worker thread |
+| I4 | Nit | contract | R28: race between the stuck check in `start_job` and the watchdog's `fail_queued` | fixed: test_a_start_racing_the_watchdog_never_leaves_a_job_queued (tests/test_watchdog.py); admission lock in ocr_service.py |
+| I5 | Nit | contract | D11: only the input path is rewritten; other server paths in scanscribe errors pass through (phase 02 R23) | accepted: phase 02's R23 covers other server paths |
+| I6 | Nit | contract | R27: size check only when `is_file()`; a FIFO/device is read as PDF unchecked | accepted: a FIFO or device as input_path is the local caller's own choice over stdio |
+| I7 | Nit | contract | R27/D5: size loop walks every page before the R4 count check | accepted: R4 and D5 put the page count after the pre-check |
+| I8 | Nit | contract | R2: some errors (bad lang, two inputs, output_path with a range) come before the local-path error | fixed: test_local_path_errors_come_first (tests/test_tools.py); local-path checks first |
+| I9 | Nit | contract | R2: `output_path` over HTTP not tested | fixed: test_output_path_never_over_http (tests/test_tools.py) |
+| I10 | Nit | contract | R14: `~/out.txt` accepted via expanduser though the path "must be absolute" | accepted: `~` is the caller's own home over stdio; README asks for absolute paths |
+| I11 | Nit | contract | D6: `write_replacing` leaves a transient temp file next to `output_path` | accepted: the temp file exists only during the write and is removed on failure |
+| I12 | Nit | contract | R10: cancel during the last page ends `succeeded` although the reply said it would stop | fixed: test_cancel_reply_promises_only_the_next_page (tests/test_tools.py); cancel_ocr_job reply |
+| I13 | Nit | contract | R12: test uses a hand-written EngineMissingError, not `scanscribe.load_engine` | fixed: test_real_load_engine_without_paddle_fails_the_job (tests/test_worker.py) |
+| I14 | Nit | contract | R21: stdio test doesn't join the stdout reader before asserting | fixed: StdioSession.close joins the pipe readers (tests/test_stdio.py) |
+| I15 | Nit | contract | R21: launcher runs `server.run()`, not the production `main()` | accepted: the kit's main only adds argument parsing and stderr logging around the same run() |
+| I16 | Nit | contract | R24: guard checks only the parent session at its end | accepted: subprocess sessions run the fake engine only; the parent guard covers the suite |
+| I17 | Nit | contract | 4.4: `expected.txt` ends with a newline, `check.txt` doesn't; `diff` never reads identical | fixed: make_pdf.py writes expected.txt without a final newline |
+
+Fixes applied 2026-11-21 (owner's choice): both Majors fixed test first; Nits fixed or accepted. Round 2 (contract lens) re-checks I1, I2 and the changed R28.
