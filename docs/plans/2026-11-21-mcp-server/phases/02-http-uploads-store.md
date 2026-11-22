@@ -47,7 +47,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
 
 ### 3. Uploads
 
-- [ ] 3.1 Add `uploads.py` from pandoc-mcp with `max_files` defaulting to
+- [x] 3.1 Add `uploads.py` from pandoc-mcp with `max_files` defaulting to
   `UPLOAD_LINK_MAX_FILES` (100), never above 200, a per-grant byte total, and a `close()` used
   when a job starts (D7, R15, R16). Verify: unit tests with an injected clock for expiry,
   used-up and closed links, the active-link limit, the byte total, and start-up refusing
