@@ -164,3 +164,25 @@ Fixes applied 2026-11-21 (owner's choice): J1, J5, J7, J9, J10, J12, J13 fixed; 
 
 ## 2026-11-21 · note · phase 01 · manual check finding
 Task 4.4 showed that Claude Code gives the model only a tool's `structuredContent`, so `get_ocr_result`'s inline text never reached the agent (R13). Fixed test first: every reply carries its summary as `message`, and `get_ocr_result` its text as `text`, in structured content (test_small_result_inline, test_large_result_not_inline, test_page_slice_with_markers). Owner's choice; the manual check reruns the inline call.
+
+## 2026-11-21 · impl-review · phase 02 · round 1 · changes-requested
+Diff base: 872ec10 · reviewed commit: 925f427 · profile `small` (contract lens only)
+Reviewers: contract ✅ (a first attempt on e48c71e stopped at the usage limit with no report; a fresh reviewer ran on 925f427)
+Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-02-round-01-contract.md` (re-typed: `save-report` refused twice, because the reviewer handed its report back as a message, not as its final result)
+
+| ID | Sev | Lens | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| M1 | Major | contract | A body cut off before its closing boundary is stored as a whole file: python-multipart's `finalize()` is a no-op (R15, R29, task 3.2) | open |
+| M2 | Major | contract | An upload whose part headers haven't arrived isn't counted as in progress, so a job can start and close the link, and the late file is stored on the closed link outside the job (R29, D7) | open |
+| M3 | Major | contract | Part header bytes count against no limit; a chunked request skips the declared-length check (R16) | open |
+| M4 | Major | contract | The log line "result stored as document <id>" plus the job id rebuilds the token-free download URL (D8, R22) | open |
+| M5 | Major | contract | Over HTTP the `output_path` error doesn't name upload links, as R2's Then says | open |
+| N1 | Nit | contract | `safe_filename`'s 120-character cut can drop the extension, so a long-named page is skipped silently | open |
+| N2 | Nit | contract | Zip entries are written under raw base names, not through `safe_filename` (D8) | open |
+| N3 | Nit | contract | If `store.begin` raises after `links.begin`, `in_progress` is never given back and the OSError reaches uvicorn | open |
+| N4 | Nit | contract | `count_zip_pages` ignores `max_pages` and counts non-image entries, so the start-time message can mislead | open |
+| N5 | Nit | contract | A document at the retention age can be purged between `store.get` and `submit`; the job then fails at run time | open |
+| N6 | Nit | contract | Zip extraction runs inside the timed `checking pages` step; a slow 2 GB unpack could trip the watchdog | open |
+| N7 | Nit | contract | `scrub` replaces the relative "data/work" anywhere in an error, including the caller's own names | open |
+| N8 | Nit | contract | The declared-length 413 is tested only with `max_files=1`, not at R16's defaults | open |
+| N9 | Nit | contract | ARCHITECTURE.md says the start and the upload route "never interleave"; untrue at await points | open |
