@@ -7,11 +7,17 @@ Two sections, each read from its own environment variables:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Annotated, Self
 
 from mcp_service_kit import BaseServerConfig
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+MIB = 1024 * 1024
+GIB = 1024 * MIB
+MAX_FILES_PER_LINK = 200
+"""The most files one upload link may take, whatever UPLOAD_LINK_MAX_FILES says (R15)."""
 
 
 class ScanscribeMcpConfig(BaseSettings):
@@ -59,6 +65,41 @@ class ScanscribeMcpConfig(BaseSettings):
         default=True,
         description="Accept input_path and output_path over stdio; never allowed over HTTP",
     )
+    # --- HTTP only (phase 02) ---------------------------------------------------------------
+    token: SecretStr | None = Field(
+        default=None, description="Bearer token clients must send to /mcp over HTTP"
+    )
+    public_base_url: str | None = Field(
+        default=None,
+        description="Base URL of download and upload links (default: http://localhost:<MCP_PORT>)",
+    )
+    output_dir: Path = Field(
+        default=Path("data/documents"), description="Document store: uploads and results"
+    )
+    work_dir: Path = Field(default=Path("data/work"), description="Job folders for uploads")
+    retention_days: float = Field(
+        default=7.0, gt=0, description="Stored documents older than this are deleted"
+    )
+    max_file_bytes: int = Field(
+        default=200 * MIB, ge=1, description="Largest file one upload may be"
+    )
+    max_upload_bytes: int = Field(
+        default=2 * GIB,
+        ge=1,
+        description="Most bytes all files of one upload link may hold, and one zip may unpack to",
+    )
+    upload_link_ttl_s: float = Field(
+        default=600.0, gt=0, description="How long an upload link accepts new uploads"
+    )
+    upload_link_max_files: int = Field(
+        default=100,
+        ge=1,
+        le=MAX_FILES_PER_LINK,
+        description=f"max_files of an upload link that names none (at most {MAX_FILES_PER_LINK})",
+    )
+    upload_link_max_active: int = Field(
+        default=100, ge=1, description="Most upload links open at the same time"
+    )
 
     @field_validator("langs", mode="before")
     @classmethod
@@ -105,3 +146,9 @@ class AppConfig(BaseModel):
         """input_path and output_path: over stdio unless ALLOW_LOCAL_PATHS=false; never over
         HTTP, whatever the variable says (R2)."""
         return self.server.transport == "stdio" and self.ocr.allow_local_paths
+
+    @property
+    def base_url(self) -> str:
+        """Where clients reach this server: PUBLIC_BASE_URL, else localhost at MCP_PORT."""
+        url = self.ocr.public_base_url or f"http://localhost:{self.server.port}"
+        return url.rstrip("/")

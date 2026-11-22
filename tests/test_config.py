@@ -91,3 +91,28 @@ def test_transport_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MCP_TRANSPORT", "http")
     monkeypatch.setenv("SCANSCRIBE_MCP_ALLOW_LOCAL_PATHS", "true")
     assert AppConfig().local_paths_allowed is False
+
+
+def test_http_defaults() -> None:
+    config = ScanscribeMcpConfig()
+    assert config.token is None and config.public_base_url is None
+    assert (str(config.output_dir), str(config.work_dir)) == ("data/documents", "data/work")
+    assert config.retention_days == 7
+    assert config.max_file_bytes == 200 * 1024**2
+    assert config.max_upload_bytes == 2 * 1024**3
+    assert config.upload_link_ttl_s == 600
+    assert (config.upload_link_max_files, config.upload_link_max_active) == (100, 100)
+
+
+def test_token_is_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SCANSCRIBE_MCP_TOKEN", "s3cret")
+    config = ScanscribeMcpConfig()
+    assert config.token is not None and config.token.get_secret_value() == "s3cret"
+    assert "s3cret" not in repr(config)
+
+
+def test_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MCP_PORT", "8302")
+    assert AppConfig().base_url == "http://localhost:8302"
+    monkeypatch.setenv("SCANSCRIBE_MCP_PUBLIC_BASE_URL", "https://ocr.example.org/")
+    assert AppConfig().base_url == "https://ocr.example.org"

@@ -22,7 +22,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
 
 ### 1. Authentication and logging
 
-- [ ] 1.1 Add the variables marked phase 02 in notes.md#configuration, `auth.py`
+- [x] 1.1 Add the variables marked phase 02 in notes.md#configuration, `auth.py`
   (`BearerTokenVerifier`), and the server's `create_auth_provider` and `validate_configuration`
   for `SCANSCRIBE_MCP_TOKEN` (D8, R2, R19). Verify: HTTP tests through `httpx.ASGITransport`: no
   token and a wrong token get 401, the right one works; start-up with auth on and no token exits

@@ -9,9 +9,12 @@ Over stdio, stdout carries the MCP protocol: nothing here prints, and logs go to
 
 from __future__ import annotations
 
+from fastmcp.server.auth import TokenVerifier
 from mcp_service_kit import BaseMCPServer, create_main_with_modes
+from pydantic import SecretStr
 
 from . import __version__
+from .auth import BearerTokenVerifier
 from .config import AppConfig
 from .service import ScanscribeMCPService
 
@@ -49,6 +52,28 @@ class ScanscribeMCPServer(BaseMCPServer):
     @property
     def instructions(self) -> str:
         return INSTRUCTIONS
+
+    @property
+    def _token(self) -> SecretStr | None:
+        service = self.service
+        assert isinstance(service, ScanscribeMCPService)
+        return service.config.ocr.token
+
+    def create_auth_provider(self) -> TokenVerifier | None:
+        """The bearer token on /mcp (D8, R19). Without one the kit refuses to serve HTTP."""
+        token = self._token
+        return BearerTokenVerifier(token) if token and token.get_secret_value() else None
+
+    def validate_configuration(self) -> None:
+        token = self._token
+        if (
+            self.config.transport == "http"
+            and self.config.auth_enabled
+            and (token is None or not token.get_secret_value())
+        ):
+            raise ValueError(
+                "SCANSCRIBE_MCP_TOKEN must be set for HTTP transport (or pass --no-auth)"
+            )
 
 
 main = create_main_with_modes(
