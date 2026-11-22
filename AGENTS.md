@@ -6,7 +6,7 @@ Shared instructions for every coding agent working in this repository. Claude Co
 
 MCP server that OCRs scanned PDFs and page-image folders into page-marked text with scanscribe, on the GPU when available.
 
-**Status:** repository setup is done; the first implementation plan is next. Update this line whenever a plan closes.
+**Status:** the plan `2026-11-21-mcp-server` is closed: the server runs over stdio and HTTP, and in Docker on an NVIDIA GPU. Its lasting decisions are ADR-0001 to ADR-0004 in [docs/adrs/](docs/adrs/README.md). No plan is active. Update this line whenever a plan closes.
 
 ## Read this first
 

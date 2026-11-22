@@ -1,11 +1,11 @@
 ---
 title: A working scanscribe MCP server
-status: implemented
+status: closed
 created: 2026-11-21
 updated: 2026-11-22
 design_review: { status: passed, rounds: 3, last: 2026-11-21 }
 approved: 2026-11-21
-adr_review: null
+adr_review: 2026-11-22
 ---
 
 # A working scanscribe MCP server
