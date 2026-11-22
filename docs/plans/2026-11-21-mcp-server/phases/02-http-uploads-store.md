@@ -97,7 +97,7 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   each attack mapped to its defence as in pandoc-mcp; add the upload tools, the routes and the
   phase 02 variables to `docs/decision-log.md`. Verify: every `SCANSCRIBE_MCP_*` variable in
   `config.py` appears in the README table and the decision log.
-- [ ] 5.2 Add `.env.example` with the token and URL variables. Verify: `gitleaks` in CI passes and
+- [x] 5.2 Add `.env.example` with the token and URL variables. Verify: `gitleaks` in CI passes and
   `.env` stays ignored.
 - [ ] 5.3 Run the HTTP server locally with `--extra gpu`, upload a self-made folder of images
   through the browser form and a zip with curl, and record the check in
