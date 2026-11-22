@@ -99,7 +99,10 @@ page images, a PDF or a zip through a link, starts a job from the `upload_id` or
   `config.py` appears in the README table and the decision log.
 - [x] 5.2 Add `.env.example` with the token and URL variables. Verify: `gitleaks` in CI passes and
   `.env` stays ignored.
-- [ ] 5.3 Run the HTTP server locally with `--extra gpu`, upload a self-made folder of images
-  through the browser form and a zip with curl, and record the check in
-  `docs/demos/<date>-http-check/README.md`. Verify: the record states the result, device, page
-  counts and that no book material was used.
+- [x] 5.3 Add a subprocess test that runs the real HTTP server with the fake engine, uploads a
+  self-made image folder and a zip with the real `curl -F`, runs both jobs and downloads a result
+  with curl, and pins the browser form's contract with the upload route. This replaces the manual
+  HTTP check (owner's decision, plan Decision log); the GPU over HTTP is checked by task 03/3.1.
+  Verify: `tests/test_http_curl.py` passes, the pages come back in natural order, the download
+  equals the inline text, and both tests fail when the field name in the route or the form
+  changes.

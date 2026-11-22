@@ -468,4 +468,8 @@ unwanted.
 - 2026-11-21 · R28 and D2 changed after phase 01's impl review (finding I1): the watchdog also
   times page 1's render and the `checking pages` step. Owner's decision; re-checked by impl review
   round 2 (contract lens), as the `small` profile asks.
-
+- 2026-11-21 · Task 02/5.3 changed during phase 02's apply: an automated test with the real
+  `curl` against the real HTTP server (fake engine) replaces the manual HTTP check on the GPU.
+  The browser form gets no real-browser run; a test pins its contract with the route. The GPU
+  over HTTP is covered by phase 03's manual check (task 03/3.1). No requirement or decision
+  changes. Owner's decision.

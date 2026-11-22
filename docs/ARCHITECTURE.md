@@ -147,5 +147,5 @@ Every test runs on the base install: no GPU and no PaddlePaddle.
 
 - **Fakes:** `tests/fakes.py` holds the fake engine and factory, a clock that moves only when a test says so, and builders for small images and PDFs. No book material is used.
 - **Tools:** tool tests use a real `fastmcp.Client` against the in-process server.
-- **HTTP:** `tests/http_helpers.py` runs the HTTP server's ASGI app in process, with an MCP client and an `httpx` client; multipart bodies are built by hand so a test can send them in chunks. `tests/http_launcher.py` runs the real server in a subprocess, for the watchdog's exit and the access-log check. Zips, PDFs and images are built by the tests.
+- **HTTP:** `tests/http_helpers.py` runs the HTTP server's ASGI app in process, with an MCP client and an `httpx` client; multipart bodies are built by hand so a test can send them in chunks. `tests/http_launcher.py` runs the real server in a subprocess, for the watchdog's exit, the access-log check, and uploads with the real `curl` (`tests/test_http_curl.py`). Zips, PDFs and images are built by the tests.
 - **Engine guard:** `tests/paddle_guard.py` fails the session if `paddle` or `paddleocr` was imported.
