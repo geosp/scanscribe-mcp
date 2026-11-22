@@ -1,13 +1,13 @@
 ---
 phase: 2
 title: HTTP, token, uploads and the document store
-status: draft
+status: approved
 branch: null
 base: null
 delivers: [R2, R15, R16, R17, R18, R19, R20, R22, R23, R28, R29]
 design_review: { status: passed, rounds: 2, last: 2026-11-21 }
 impl_review: { status: none, rounds: 0, last: null }
-approved: null
+approved: 2026-11-21
 ---
 
 # Phase 02 · HTTP, token, uploads and the document store

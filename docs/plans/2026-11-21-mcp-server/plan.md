@@ -1,10 +1,10 @@
 ---
 title: A working scanscribe MCP server
-status: draft
+status: approved
 created: 2026-11-21
 updated: 2026-11-21
 design_review: { status: passed, rounds: 2, last: 2026-11-21 }
-approved: null
+approved: 2026-11-21
 adr_review: null
 ---
 
@@ -442,9 +442,9 @@ unwanted.
 
 | Phase | Title | Status | Tasks |
 | --- | --- | --- | --- |
-| 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26–R28) | draft | 0/16 |
-| 02 | HTTP, token, uploads and the document store (R15–R20, R22, R23, R28, R29) | draft | 0/15 |
-| 03 | Docker on the GPU and the manual GPU check (R25) | draft | 0/8 |
+| 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26–R28) | approved | 0/16 |
+| 02 | HTTP, token, uploads and the document store (R15–R20, R22, R23, R28, R29) | approved | 0/15 |
+| 03 | Docker on the GPU and the manual GPU check (R25) | approved | 0/8 |
 
 ## Decision log
 

@@ -92,3 +92,6 @@ Raw reports: docs/reviews/2026-11-21-mcp-server/raw/design-review-02-{fresh-read
 | G26 | Nit | fresh reader | Whether R26's page-2 `RuntimeError` counts as an engine error is unclear | fixed: D3 (any error while recognizing) |
 
 Fixes applied 2026-11-21: every Major fixed or accepted (G12). Status: passed. The design-review skill stops after round 2; nothing is open. Structure warnings: plan.md 442 body lines and phase 01 108 lines over budget, accepted as in F25.
+
+## 2026-11-21 · approved · plan and phases 01–03
+Approved by the owner after design review round 2 passed.
