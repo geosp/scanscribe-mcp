@@ -234,3 +234,6 @@ Raw report: `docs/reviews/2026-11-21-mcp-server/raw/impl-review-phase-03-round-0
 | N8 | Nit | contract | `.dockerignore` ignores only top-level `in/`, `out/`, `data/`; stray PDFs elsewhere reach the build context | fixed: `.dockerignore` is an allow-list of the four inputs; test_docker_files.py::test_the_build_context_is_an_allow_list, and the record lists the context |
 
 Fixes in e727b93, owner-approved (M1; N1-N4, N6-N8; N5 accepted). Each test failed before its fix and fails again when the fix is reverted. Found while fixing: on cancel and failure the worker marked the job final before removing its job folder, so a caller could briefly see the folder after a final state (a flaky test showed it); the folder is now removed first, pinned by test_upload_jobs.py::test_the_job_folder_is_gone_before_the_job_ends.
+
+## 2026-11-22 · done · phase 03
+Gate passed: 9/9 tasks, impl review passed (round 1). Checks from a clean clone of a217cf7: ruff, format, mypy, 274 tests, agent sync, gitleaks, links. Manual check: docs/demos/2026-11-22-docker-gpu-check/README.md. Every phase is done; the plan is implemented.
