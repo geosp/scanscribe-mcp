@@ -13,6 +13,29 @@ uploader ──▶ /upload/<token> ──▶ UploadReceiver ──▶ DocumentSt
 downloader ──▶ /documents/<id>/<name> ─────────────────┘
 ```
 
+In Docker (phase 03), the same process runs in one container on the GPU host:
+
+```mermaid
+flowchart LR
+    agent["MCP client (agent)"] -- "POST /mcp, bearer token" --> server
+    uploader["browser or curl"] -- "POST /upload/&lt;token&gt;" --> server
+    downloader["user or agent"] -- "GET /documents/&lt;id&gt;/&lt;name&gt;" --> server
+    subgraph host["GPU host"]
+        subgraph container["container: scanscribe-mcp, uid 1000, port 8302"]
+            server["HTTP server and tools"] --> worker["worker thread: scanscribe and PaddlePaddle"]
+        end
+        documents[("volume documents at /data: uploads, results, job folders")]
+        models[("volume models at /cache: PaddleX models")]
+        gpu["NVIDIA GPU, through the NVIDIA Container Toolkit"]
+        server --- documents
+        worker --- documents
+        worker --- models
+        worker --> gpu
+    end
+```
+
+Compose restarts the container when the watchdog ends the process (exit code 70). Both volumes outlive the container, so a restart or rebuild keeps the stored documents and doesn't download the models again.
+
 | Module | Role | Uses MCP? |
 | --- | --- | --- |
 | `server.py` | `ScanscribeMCPServer`: instructions sent to clients (one text per transport), the bearer-token provider, the token check at start-up, uvicorn's access log off; `main()` from the kit's `create_main_with_modes` | yes |
