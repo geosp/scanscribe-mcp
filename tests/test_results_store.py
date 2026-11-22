@@ -126,3 +126,24 @@ def test_timer_purges_while_idle_and_spares_live_jobs(tmp_path: Path) -> None:
             wait_for(service, running)
     finally:
         release.set()
+
+
+def test_the_timer_purges_while_no_job_runs(tmp_path: Path) -> None:
+    """N12, R20: an hour on, an old document goes even though no job has run at all."""
+    wall = FakeClock(start=30 * 86400.0)
+    store = DocumentStore(tmp_path / "documents", "http://x", clock=wall)
+    store.ensure_directory()
+    clock = FakeClock()
+    with running_service(
+        transport="http", local_paths=False, store=store, clock=clock, purge_poll_s=0.01
+    ) as service:
+        time.sleep(0.05)  # the start-up purge has run
+        old = store.save(b"x", "old.pdf")
+        past = wall() - 8 * 86400
+        os.utime(old.path.parent, (past, past))
+        clock.advance(3600)
+        deadline = time.monotonic() + 5
+        while store.get(old.id) is not None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert store.get(old.id) is None
+        assert service.table.running() is None and sum(service.table.counts().values()) == 0

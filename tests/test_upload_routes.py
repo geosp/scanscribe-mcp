@@ -246,3 +246,28 @@ async def test_a_store_error_gives_back_the_upload_and_hides_its_text(
         grant = uploads(s).get(upload_id)
         assert grant is not None and grant.in_progress == 0 and grant.requests == 0
         assert "secret-name" not in caplog.text
+
+
+async def test_a_failed_store_keeps_none_of_the_requests_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """N17: if storing the second file fails, the first isn't kept either."""
+    from scanscribe_mcp import documents
+
+    real = documents.PendingDocument.commit
+    calls = {"n": 0}
+
+    def second_fails(self: documents.PendingDocument, metadata: object = None) -> object:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("disk full")
+        return real(self, metadata)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(documents.PendingDocument, "commit", second_fails)
+    async with http_server(tmp_path) as s:
+        url, upload_id = await new_link(s)
+        status, _ = await post(s, url, multipart(("p1.png", png()), ("p2.png", png())))
+        assert status == 500
+        grant = uploads(s).get(upload_id)
+        assert grant is not None and grant.files == [] and grant.bytes == 0
+        assert grant.in_progress == 0 and stored_count(tmp_path) == 0

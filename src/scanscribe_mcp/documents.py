@@ -135,7 +135,10 @@ class DocumentStore:
         doc_id = uuid.uuid4().hex
         folder = self.directory / doc_id
         folder.mkdir(parents=True)
-        return PendingDocument(self, doc_id, folder, safe_filename(filename))
+        name = safe_filename(filename)
+        if name == METADATA_FILE:  # an upload may not take the store's own file name
+            name = "meta_.json"
+        return PendingDocument(self, doc_id, folder, name)
 
     def get(self, doc_id: str) -> StoredDocument | None:
         folder = self._folder(doc_id)

@@ -12,6 +12,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from scanscribe_mcp.uploads import InputRefused, extract_zip, zip_pages
 
@@ -69,23 +70,45 @@ HOSTILE = {
 }
 
 
+REFUSED_AT_RUN = {
+    "understated size"
+}  # only unpacking finds the lie; the rest show in the directory
+
+
 @pytest.mark.parametrize("case", sorted(HOSTILE))
 async def test_hostile_zips_fail_before_ocr(tmp_path: Path, case: str) -> None:
+    """R17, N10: refused at start_ocr_job from the central directory, leaving the link open; a
+    lie only unpacking finds fails the job at run time. Neither reaches the engine."""
     data, message = HOSTILE[case]
     factory = FakeEngineFactory()
     async with http_server(tmp_path, factory) as s:
         upload_id = await upload(s, ("pages.zip", data))
-        try:
+        if case in REFUSED_AT_RUN:
             done = await run_job(s, upload_id=upload_id)
-        except Exception as exc:  # refused at start: the count reads the same directory
-            assert message in str(exc)
-        else:
             assert done["state"] == "failed", done
             assert message in done["error"] and "pages.zip" in done["error"]
             assert str(tmp_path) not in done["error"]
+        else:
+            with pytest.raises(ToolError, match=message):
+                await s.mcp.call_tool("start_ocr_job", {"upload_id": upload_id})
+            checked = await s.mcp.call_tool("check_upload", {"upload_id": upload_id})
+            assert checked.structured_content["closed"] is False
     assert factory.calls == []
     assert not any(tmp_path.rglob("x.png")) and not Path("/x.png").exists()
     assert not any(p for p in (tmp_path / "data" / "work").iterdir() if len(p.name) == 32)
+
+
+@pytest.mark.parametrize("case", sorted(set(HOSTILE) - {"not a zip"}))
+def test_the_worker_refuses_hostile_zips_too(tmp_path: Path, case: str) -> None:
+    """R17: the worker checks every zip again before writing, whatever start_ocr_job saw."""
+    data, message = HOSTILE[case]
+    path = tmp_path / "pages.zip"
+    path.write_bytes(data)
+    folder = tmp_path / "job" / "pages"
+    with pytest.raises(InputRefused, match=message):
+        extract_zip(path, "pages.zip", folder, max_pages=10, max_bytes=10**6)
+    # A partial page may stay inside the job folder, which the worker deletes; never outside.
+    assert not any(p for p in tmp_path.rglob("x.png") if folder not in p.parents)
 
 
 def test_a_zipped_folder_becomes_flat_pages(tmp_path: Path) -> None:

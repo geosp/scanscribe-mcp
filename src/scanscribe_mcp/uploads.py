@@ -258,16 +258,24 @@ class UploadReceiver:
             raise
 
     def _commit(self, files: list[_Part]) -> list[StoredDocument]:
-        stored = []
-        for part in files:
-            assert part.pending is not None
-            document = part.pending.commit(
-                {"kind": "upload", "upload_id": self.grant.upload_id, "hidden": part.hidden}
-            )
-            part.pending = None
-            self.links.finish(self.grant, document.id)
-            stored.append(document)
-        return stored
+        """Store every file of the request, or none: if one fails, those stored are removed."""
+        stored: list[tuple[_Part, StoredDocument]] = []
+        try:
+            for part in files:
+                assert part.pending is not None
+                document = part.pending.commit(
+                    {"kind": "upload", "upload_id": self.grant.upload_id, "hidden": part.hidden}
+                )
+                part.pending = None
+                self.links.finish(self.grant, document.id)
+                stored.append((part, document))
+        except BaseException:
+            for part, document in stored:
+                self.store.delete(document.id)
+                self.grant.files.remove(document.id)
+                self.grant.bytes -= part.size
+            raise
+        return [document for _, document in stored]
 
     def _check_open(self) -> None:
         if self.grant.closed:

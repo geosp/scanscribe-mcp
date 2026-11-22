@@ -356,7 +356,13 @@ class OcrService:
         if stored is None:
             raise ValueError(f"no stored document with id {doc_id!r}; it may have expired")
         kind = file_kind(stored.filename)
-        if self.store.metadata(stored).get("kind") != "upload" or kind not in (PDF, ZIP):
+        metadata = self.store.metadata(stored)
+        if metadata.get("hidden"):
+            raise ValueError(
+                f"document {doc_id!r} was uploaded as a hidden file, which a job skips; upload "
+                "it under a plain name"
+            )
+        if metadata.get("kind") != "upload" or kind not in (PDF, ZIP):
             raise ValueError(
                 f"document {doc_id!r} ({stored.filename}) is not an uploaded PDF or zip; a job "
                 "reads an uploaded PDF or zip by its id, or an upload link's files by upload_id"

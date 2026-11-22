@@ -49,21 +49,23 @@ drop.addEventListener("drop", e => {
 });
 
 async function upload(files) {
-  for (const file of files) {
-    statusEl.className = ""; statusEl.textContent = `Uploading ${file.name}…`;
-    const body = new FormData(); body.append("file", file);
-    try {
-      // The page's own URL carries the upload token
-      const response = await fetch(location.pathname, { method: "POST", body });
-      const data = await response.json().catch(() => ({ error: response.statusText }));
-      if (!response.ok) throw new Error(data.error || response.statusText);
-      data.files.forEach(show);
-      statusEl.textContent = data.remaining > 0
-        ? `Done. This link accepts ${data.remaining} more file(s).`
-        : "Done. This link is now used up; tell the assistant you're finished.";
-    } catch (err) {
-      statusEl.className = "error"; statusEl.textContent = `${file.name}: ${err.message}`;
-    }
+  if (!files.length) return;
+  // All the chosen files go in one request: the server stores them all or none, and a job
+  // can't start between two of them.
+  const body = new FormData();
+  for (const file of files) body.append("file", file);
+  statusEl.className = ""; statusEl.textContent = `Uploading ${files.length} file(s)…`;
+  try {
+    // The page's own URL carries the upload token
+    const response = await fetch(location.pathname, { method: "POST", body });
+    const data = await response.json().catch(() => ({ error: response.statusText }));
+    if (!response.ok) throw new Error(data.error || response.statusText);
+    data.files.forEach(show);
+    statusEl.textContent = data.remaining > 0
+      ? `Done. This link accepts ${data.remaining} more file(s).`
+      : "Done. This link is now used up; tell the assistant you're finished.";
+  } catch (err) {
+    statusEl.className = "error"; statusEl.textContent = `Upload failed: ${err.message}`;
   }
 }
 

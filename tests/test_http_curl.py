@@ -83,5 +83,7 @@ async def test_the_browser_form_posts_its_files_where_the_route_reads_them(tmp_p
             link = (await client.call_tool("create_upload_link", {})).structured_content
             page = curl(link["upload_url"])
     assert 'fetch(location.pathname, { method: "POST", body })' in page
-    assert 'body.append("file", file)' in page
+    # N18: every chosen file goes in one request, so no start can fall between two of them.
+    assert 'for (const file of files) body.append("file", file);' in page
+    assert page.count("fetch(") == 1
     assert "data.files.forEach" in page and "data.remaining" in page

@@ -75,11 +75,13 @@ async def test_a_pdf_is_read_in_place(tmp_path: Path) -> None:
 async def test_a_zip_is_unpacked(tmp_path: Path) -> None:
     factory = FakeEngineFactory()
     async with http_server(tmp_path, factory) as s:
-        pages = zip_bytes({"scan/p2.png": png(2), "scan/p1.png": png(1), "scan/": b""})
+        pages = zip_bytes(
+            {"scan/p10.png": png(10), "scan/p2.png": png(2), "scan/p1.png": png(1), "scan/": b""}
+        )
         upload_id = await upload(s, ("pages.zip", pages))
         done = await run_job(s, upload_id=upload_id)
-        assert done["state"] == "succeeded" and done["input"] == "zip" and done["total"] == 2
-        assert factory.last is not None and factory.last.seen == [1, 2]
+        assert done["state"] == "succeeded" and done["input"] == "zip" and done["total"] == 3
+        assert factory.last is not None and factory.last.seen == [1, 2, 10]  # N14: natural order
         assert job_folders(tmp_path) == []
 
 
@@ -117,6 +119,8 @@ async def test_an_upload_in_progress_or_none_yet_is_refused(tmp_path: Path) -> N
         s.service.ocr.uploads.open_request(grant)  # as the route does while a request arrives
         with pytest.raises(ToolError, match="still arriving.*wait"):
             await s.mcp.call_tool("start_ocr_job", {"upload_id": upload_id})
+        checked = await s.mcp.call_tool("check_upload", {"upload_id": upload_id})
+        assert checked.structured_content["closed"] is False  # N21: the refusal left it open
         s.service.ocr.uploads.end_request(grant)
         await send(s, url, ("p1.png", png()))
         with pytest.raises(ToolError, match="unknown or expired upload_id"):
@@ -238,3 +242,42 @@ async def test_no_file_is_stored_on_a_link_closed_mid_request(tmp_path: Path) ->
         response = await post_stream(s, url, chunked(body, 64, close_midway))
         assert response.status_code == 404 and grant.files == []
         assert grant.requests == 0 and grant.in_progress == 0
+
+
+async def test_an_upload_named_like_the_metadata_file_is_kept_apart(tmp_path: Path) -> None:
+    """F1, D7: a stray meta.json is stored under its own name and skipped as a non-image."""
+    async with http_server(tmp_path) as s:
+        upload_id = await upload(
+            s, ("p1.png", png(1)), ("p2.png", png(2)), ("meta.json", b"{}"), ("../meta.json", b"[]")
+        )
+        checked = await s.mcp.call_tool("check_upload", {"upload_id": upload_id})
+        assert len(checked.structured_content["files"]) == 4
+        done = await run_job(s, upload_id=upload_id)
+        assert done["state"] == "succeeded", done
+        assert sorted(done["start"]["files"]) == ["p1.png", "p2.png"]
+
+
+async def test_images_are_copied_when_they_cant_be_linked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """N13: across filesystems os.link fails; the pages are copied instead."""
+
+    def no_links(source: object, target: object) -> None:
+        raise OSError(18, "Invalid cross-device link")
+
+    monkeypatch.setattr("scanscribe_mcp.uploads.os.link", no_links)
+    factory = FakeEngineFactory()
+    async with http_server(tmp_path, factory) as s:
+        done = await run_job(s, upload_id=await upload(s, ("p2.png", png(2)), ("p1.png", png(1))))
+        assert done["state"] == "succeeded" and done["total"] == 2
+        assert factory.last is not None and factory.last.seen == [1, 2]
+
+
+async def test_a_hidden_upload_is_no_input_by_id_either(tmp_path: Path) -> None:
+    """N15: document= skips what upload_id skips: a hidden file."""
+    async with http_server(tmp_path) as s:
+        upload_id = await upload(s, (".p.pdf", pdf_bytes(tmp_path, 1)))
+        checked = await s.mcp.call_tool("check_upload", {"upload_id": upload_id})
+        doc_id = checked.structured_content["files"][0]["id"]
+        with pytest.raises(ToolError, match="hidden"):
+            await s.mcp.call_tool("start_ocr_job", {"document": doc_id})
