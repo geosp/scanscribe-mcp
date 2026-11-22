@@ -197,16 +197,18 @@ No round 1 finding came back.
 
 | ID | Sev | Lens | Finding | Resolution |
 | --- | --- | --- | --- | --- |
-| F1 | Major | contract | An upload named `meta.json` (or `../meta.json`) collides with the store's metadata file; `get()` then finds no file and every start on that link is refused as "no longer stored" (D7, R29) | open |
-| N10 | Nit | contract | R17's test accepts a refusal at start or a failure at run time; neither is pinned, and the link staying open after a zip refusal isn't checked | open |
-| N11 | Nit | contract | Defaults are 200 MiB and 2 GiB where the plan says 200 MB and 2 GB | open |
-| N12 | Nit | contract | The purge test sees the hourly purge only while a job runs; "while idle" is never observed | open |
-| N13 | Nit | contract | The copy fallback when `os.link` fails is never exercised | open |
-| N14 | Nit | contract | Natural order inside a zip (with `p10`) is tested only in the curl test, which is skipped without curl | open |
-| N15 | Nit | contract | `document=` doesn't honour the `hidden` flag that `upload_id` skips | open |
-| N16 | Nit | contract | A `document=` start can race the purge thread's keep set for a document already past retention; the job then fails cleanly | open |
-| N17 | Nit | contract | If `commit` fails on the second file of a request, the first stays stored while the route answers 500 | open |
-| N18 | Nit | contract | The browser form sends one request per file, so a start between two files takes a partial snapshot and closes the link | open |
+| F1 | Major | contract | An upload named `meta.json` (or `../meta.json`) collides with the store's metadata file; `get()` then finds no file and every start on that link is refused as "no longer stored" (D7, R29) | fixed: `DocumentStore.begin` stores an upload named `meta.json` as `meta_.json` (documents.py); test_upload_jobs.py::test_an_upload_named_like_the_metadata_file_is_kept_apart |
+| N10 | Nit | contract | R17's test accepts a refusal at start or a failure at run time; neither is pinned, and the link staying open after a zip refusal isn't checked | fixed: test pins the refusal at start with the link left open, and the run-time failure for the understated size; the worker re-checks every hostile zip (test_zips.py) |
+| N11 | Nit | contract | Defaults are 200 MiB and 2 GiB where the plan says 200 MB and 2 GB | accepted: the README gives the limits in MiB and GiB; only the plan says "MB" loosely |
+| N12 | Nit | contract | The purge test sees the hourly purge only while a job runs; "while idle" is never observed | fixed: test_results_store.py::test_the_timer_purges_while_no_job_runs |
+| N13 | Nit | contract | The copy fallback when `os.link` fails is never exercised | fixed: test_upload_jobs.py::test_images_are_copied_when_they_cant_be_linked |
+| N14 | Nit | contract | Natural order inside a zip (with `p10`) is tested only in the curl test, which is skipped without curl | fixed: test_upload_jobs.py::test_a_zip_is_unpacked now has p10 |
+| N15 | Nit | contract | `document=` doesn't honour the `hidden` flag that `upload_id` skips | fixed: `document=` refuses a hidden upload (ocr_service.py); test_upload_jobs.py::test_a_hidden_upload_is_no_input_by_id_either |
+| N16 | Nit | contract | A `document=` start can race the purge thread's keep set for a document already past retention; the job then fails cleanly | accepted: the same tiny window as round 1 N5, and the job fails cleanly |
+| N17 | Nit | contract | If `commit` fails on the second file of a request, the first stays stored while the route answers 500 | fixed: `_commit` removes the request's stored files if one fails (uploads.py); test_upload_routes.py::test_a_failed_store_keeps_none_of_the_requests_files |
+| N18 | Nit | contract | The browser form sends one request per file, so a start between two files takes a partial snapshot and closes the link | fixed: the form sends every chosen file in one request (upload_page.html); test_http_curl.py pins it |
 | N19 | Nit | contract | Unpacking a zip is timed as part of `checking pages` (same as round 1's N6) | accepted: round 1, N6 |
-| N20 | Nit | contract | `public_message` may miss a job-folder path spelled through a symlinked working folder; `scrub` still hides it | open |
-| N21 | Nit | contract | The in-progress refusal test doesn't assert the link is still open right after the refusal | open |
+| N20 | Nit | contract | `public_message` may miss a job-folder path spelled through a symlinked working folder; `scrub` still hides it | accepted: no server path leaks either way; `scrub` still hides it |
+| N21 | Nit | contract | The in-progress refusal test doesn't assert the link is still open right after the refusal | fixed: test_upload_jobs.py asserts the link is open after the refusal |
+
+Fixes in 932fb34, owner-approved (F1; N10, N12-N15, N17, N18, N21; N11, N16, N20 accepted). Each code fix's test fails when the fix is reverted; N10, N12-N14 and N21 added coverage for behaviour that was already right. Review rounds stop here, as the impl-review skill says.
