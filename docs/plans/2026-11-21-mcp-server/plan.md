@@ -291,7 +291,8 @@ images that reduce to the same name.
 
 `server.py` (instructions, auth), `service.py` (tool discovery, routes) and one
 `features/<name>/tool.py` per tool. The logic lives in `ocr_service.py`, `jobs.py`,
-`documents.py` and `uploads.py`, which never import MCP. Config is `AppConfig` = the kit's
+`documents.py` and `uploads.py`, which never use MCP's API (importing `config.py` loads the kit,
+and with it fastmcp). Config is `AppConfig` = the kit's
 `BaseServerConfig` plus `ScanscribeMcpConfig` (`SCANSCRIBE_MCP_*`). Rejected: a flat module (it
 would break with the pattern the owner maintains in pandoc-mcp). Details: notes.md#d1
 

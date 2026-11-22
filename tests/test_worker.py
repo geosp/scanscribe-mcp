@@ -5,6 +5,7 @@ R4, R8, R11, R12, R26, R27.
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -117,6 +118,7 @@ def test_engine_error_fails_the_job_and_drops_the_engine(tmp_path: Path) -> None
     assert failed.error == "OCR failed (RuntimeError)"
     assert ok.state is JobState.SUCCEEDED
     assert len(factory.calls) == 2
+    assert factory.alive_at_load == [[], [False]]  # the broken engine was freed first
 
 
 def test_unreadable_page_fails_with_a_scanscribe_message(tmp_path: Path) -> None:
@@ -140,6 +142,10 @@ def test_columns_reach_scanscribe(tmp_path: Path, columns: int) -> None:
     assert factory.last is not None and len(factory.last.seen) == columns
 
 
+@pytest.mark.skipif(
+    importlib.util.find_spec("paddle") is not None,
+    reason="an engine extra is installed; run `uv sync --locked` for the base install",
+)
 def test_real_load_engine_without_paddle_fails_the_job(tmp_path: Path) -> None:
     """The base install has no PaddlePaddle: scanscribe's own load_engine reports it (R12)."""
     folder = make_pages(tmp_path / "pages", 1)
@@ -154,3 +160,13 @@ def test_real_load_engine_without_paddle_fails_the_job(tmp_path: Path) -> None:
     assert job.state is JobState.FAILED and job.error is not None
     assert "uv sync --extra gpu" in job.error and "uv sync --extra cpu" in job.error
     assert "paddle" not in sys.modules and "paddleocr" not in sys.modules
+
+
+@pytest.mark.parametrize("bad", ["", "   "])
+def test_empty_input_path_is_refused_and_creates_no_job(bad: str) -> None:
+    with running_service() as service:
+        with pytest.raises(ValueError, match="input_path is empty"):
+            service.start_job(input_path=bad)
+        with pytest.raises(ValueError, match="exactly one input"):
+            service.start_job()
+        assert sum(service.table.counts().values()) == 0

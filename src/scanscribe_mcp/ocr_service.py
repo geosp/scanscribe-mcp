@@ -6,7 +6,7 @@ while it runs and pdfium isn't thread safe. The worker's order for each job (D5)
 1. PDF page sizes (R27), 2. `open_source` with its pre-check, 3. the page limit (R4),
 4. the engine, loaded through the injected factory (D3), 5. `ocr_source`.
 
-Nothing here imports MCP. Callers' mistakes raise `ValueError`; the tools turn them into tool
+Nothing here uses MCP's API. Callers' mistakes raise `ValueError`; the tools turn them into tool
 errors. Logs name jobs by id and inputs by kind, size and page count, never by name (R22).
 """
 
@@ -177,6 +177,8 @@ class OcrService:
         """Check a job's input and options and queue it (R1-R4, R6, R28)."""
         if input_path is not None:
             self.check_local_paths("input_path")
+            if not input_path.strip():
+                raise ValueError("input_path is empty; pass the path of a PDF or an image folder")
         given = [
             name
             for name, value in (
@@ -236,6 +238,11 @@ class OcrService:
         """input_path and output_path only where local paths are allowed (R2)."""
         if self.local_paths:
             return
+        if self.transport != "stdio" and argument == "output_path":
+            raise ValueError(
+                "output_path is not accepted over HTTP: the server can't write your files. "
+                "Get the text inline or in page ranges with first_page and last_page instead"
+            )
         if self.transport != "stdio":
             raise ValueError(
                 f"{argument} is not accepted over HTTP: the server can't read your files. "
@@ -462,6 +469,7 @@ class OcrService:
             self._engine_device = device
             self.table.update(job.id, device=device)
 
+        gc.collect()  # an engine dropped after an error may only now be unreachable (D3)
         engine = self._factory(lang, self.config.device, on_device=on_device)
         self._engine, self._engine_lang = engine, lang
         logger.info("job %s: engine loaded for lang %s on %s", job.id, lang, self._engine_device)

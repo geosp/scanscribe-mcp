@@ -494,7 +494,7 @@ async def test_local_path_errors_come_first(make_client: MakeClient, tmp_path: P
 async def test_output_path_never_over_http(make_client: MakeClient, tmp_path: Path) -> None:
     client = await make_client(transport="http", allow_local_paths=True)
     target = tmp_path / "x.txt"
-    with pytest.raises(ToolError, match="output_path is not accepted over HTTP"):
+    with pytest.raises(ToolError, match="output_path is not accepted over HTTP.*page ranges"):
         await client.call_tool("get_ocr_result", {"job_id": "x", "output_path": str(target)})
     assert not target.exists()
 

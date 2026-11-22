@@ -11,14 +11,14 @@ MCP client ──▶ FastMCP (kit) ──▶ features/<tool>/tool.py ──▶ O
                                                      watchdog thread
 ```
 
-| Module | Role | Imports MCP? |
+| Module | Role | Uses MCP? |
 | --- | --- | --- |
 | `server.py` | `ScanscribeMCPServer`: instructions sent to clients; `main()` from the kit's `create_main_with_modes` | yes |
 | `service.py` | `ScanscribeMCPService`: builds `OcrService` and starts its threads in `initialize()`, stops them in `cleanup()`, registers every `features/*/tool.py` | yes |
 | `features/<tool>/tool.py` | One MCP tool each: arguments, reply text and structured content | yes |
 | `results.py` | `tool_errors()` turns a `ValueError` into a tool error; job status fields and replies | yes |
-| `config.py` | `AppConfig`: the kit's `BaseServerConfig` (`MCP_*`) and `ScanscribeMcpConfig` (`SCANSCRIBE_MCP_*`) | no |
-| `ocr_service.py` | `OcrService`: input and option checks, the worker, the engine cache, the watchdog, results | no |
+| `config.py` | `AppConfig`: the kit's `BaseServerConfig` (`MCP_*`) and `ScanscribeMcpConfig` (`SCANSCRIBE_MCP_*`) | no, but importing the kit loads fastmcp |
+| `ocr_service.py` | `OcrService`: input and option checks, the worker, the engine cache, the watchdog, results | no (it imports `config.py`) |
 | `jobs.py` | `Job`, `JobTable` (the job table under a lock) and the FIFO queue | no |
 
 Callers' mistakes are raised as `ValueError` with a message meant for the caller. The tools wrap them in `tool_errors()`, so they reach the client as tool errors.
@@ -52,7 +52,7 @@ Cancelling sets a flag on the job. The worker checks it after the pre-check, aft
 
 ## The watchdog
 
-A second thread checks the running job's current page every second. When the page passes `PAGE_TIMEOUT_S`, the watchdog:
+A second thread checks the running job every second. It times the `checking pages` step, and then each page from when the job reaches it until the next page is ready, which covers page 1's render. It doesn't time the engine load, because a first run downloads models. When one of these passes `PAGE_TIMEOUT_S`, the watchdog:
 
 - fails the job, naming the timeout;
 - fails every queued job with a request to restart the server;
