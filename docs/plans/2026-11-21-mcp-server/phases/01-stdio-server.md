@@ -39,7 +39,7 @@ slices or into a local file. Every test runs on the base install with a fake eng
 
 ### 2. Jobs and the worker
 
-- [ ] 2.1 Add `jobs.py`: the `Job` record (id, state, step, input kind, options, page, total,
+- [x] 2.1 Add `jobs.py`: the `Job` record (id, state, step, input kind, options, page, total,
   page start time, device, error, pages, timestamps), the job table under a lock, and the FIFO
   queue; R6 counts `queued` jobs in the table, and a queued job past the timeout reads as
   `expired` (D2, R5, R6, R7). Verify: unit tests with an injected clock for order, the 21st job
