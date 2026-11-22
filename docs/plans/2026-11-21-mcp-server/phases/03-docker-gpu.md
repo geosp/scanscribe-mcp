@@ -1,12 +1,12 @@
 ---
 phase: 3
 title: Docker on the GPU and the manual GPU check
-status: in-progress
+status: impl-reviewed
 branch: feat/6-docker-gpu
 base: 88314612cdbbad1acacf3146ee45a4fa629847ae
 delivers: [R25]
 design_review: { status: passed, rounds: 3, last: 2026-11-21 }
-impl_review: { status: changes-requested, rounds: 1, last: 2026-11-22 }
+impl_review: { status: passed, rounds: 1, last: 2026-11-22 }
 approved: 2026-11-21
 ---
 

@@ -69,3 +69,14 @@ docker run --rm --user 0 -v $PWD/tests:/app/tests:ro,z -v $PWD/.github:/app/.git
 
 - **Three libraries missing from `python:3.12-slim`.** PaddlePaddle failed to import without `libgomp1`, and the first job failed with `OCR failed (ImportError)` until `libgl1` and `libglib2.0-0` were installed, which the OpenCV that PaddleX imports needs. The Dockerfile installs all three, and D9's slim base stands (plan Decision log, 2026-11-22).
 - **A first try at the French PDF** used Pillow's built-in font, which has no accented letters: it drew empty boxes, and the OCR read them as `ø` or dropped them. With Liberation Sans the accents are drawn, and the OCR reads them all. That was the input, not the server.
+
+### Rechecked after the implementation review
+
+After the review's fixes (commit e727b93: links follow the host port, `SCANSCRIBE_MCP_DEVICE` defaults to `gpu:0`, more settings passed through, a stricter healthcheck, an allow-list `.dockerignore`), the image was rebuilt and these were run on the same host. The stack ran on the `scanscribe-check` volumes, whose model cache already held the English models.
+
+- **Task 1.1:** `docker run --rm scanscribe-mcp:latest python -c "import scanscribe_mcp, sys; print(sys.prefix)"` printed `/app/.venv`; the image runs as `uid=1000(scanscribe)`.
+- **Task 1.2, the token:** `docker compose --env-file /dev/null config -q` exits 1 without `SCANSCRIBE_MCP_TOKEN` ("required variable SCANSCRIBE_MCP_TOKEN is missing a value") and 0 with it.
+- **Task 1.2, a real `.env` file:** a scratch env file outside the repository, holding the token, `SCANSCRIBE_MCP_HOST_PORT=9000`, `SCANSCRIBE_MCP_LANGS=en,fr` and `SCANSCRIBE_MCP_PAGE_TIMEOUT_S=900`, was passed with `--env-file`. Inside the container `env` showed `SCANSCRIBE_MCP_DEVICE=gpu:0`, `SCANSCRIBE_MCP_LANGS=en,fr`, `SCANSCRIBE_MCP_PAGE_TIMEOUT_S=900` and `SCANSCRIBE_MCP_PUBLIC_BASE_URL=http://localhost:9000`.
+- **Host port 9000:** the 10-page English job, uploaded and started through `http://localhost:9000`, ran on `gpu:0` in 5.7 s with text identical to `en.expected.txt`, and its download URL was on port 9000.
+- **Task 1.2, the build context:** a throwaway image that copied the whole context held only `README.md`, `pyproject.toml`, `src` and `uv.lock`.
+- **A restart in the container:** SIGTERM to the server process (PID 1) ended it; `restart: unless-stopped` started it again within seconds (restart count 0 to 1, a new start time), and the healthcheck reported `healthy`. A real exit 70 needs a page that hangs in the engine, which this check can't produce; `tests/test_http_process.py` shows the server exits with 70 when a page hangs, and the restart policy applies to any exit.

@@ -460,7 +460,7 @@ unwanted.
 | --- | --- | --- | --- |
 | 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26–R28) | done | 16/16 |
 | 02 | HTTP, token, uploads and the document store (R15–R20, R22, R23, R28, R29) | done | 15/15 |
-| 03 | Docker on the GPU and the manual GPU check (R25) | approved | 0/8 |
+| 03 | Docker on the GPU and the manual GPU check (R25) | in-progress | 9/9 |
 
 ## Decision log
 
