@@ -63,30 +63,32 @@ Raw reports: docs/reviews/2026-11-21-mcp-server/raw/design-review-02-{fresh-read
 
 | ID | Sev | Lens | Finding | Resolution |
 | --- | --- | --- | --- | --- |
-| G1 | Major | codebase fit, zoom out | `ALLOW_LOCAL_PATHS=true` would let the HTTP server take client paths, against AGENTS.md | open |
-| G2 | Major | fresh reader, codebase fit, zoom out | Worker order unstated; the engine may load (and download models) for inputs that are then refused; conflicts with R4 and task 01/2.2 | open |
-| G3 | Major | codebase fit, zoom out | Relative `data/` defaults over stdio create folders in the user's project; emptying `WORK_DIR` at start-up and purge can hit other processes' files | open |
-| G4 | Major | fresh reader, codebase fit | Two uploaded images with the same name collide in the job folder | open |
-| G5 | Major | codebase fit | Task 03/3.2: the image has no `.github/` or `README.md`, so the suite can't pass | open |
-| G6 | Major | zoom out | A hung page leaves the process alive, so `restart: unless-stopped` never recovers it | open |
-| F14 | Major | zoom out | Reopened: a file still uploading at `start_ocr_job` is silently left out; a second start on a closed `upload_id` is undefined | open |
-| G7 | Major | fresh reader | With local paths off over stdio, the R2 error points to upload links, which stdio doesn't have | open |
-| G8 | Major | fresh reader, zoom out | R13: a page range longer than the inline limit is undefined | open |
-| G9 | Major | fresh reader, codebase fit | The path-swapping mechanism sits only in Risks; R26 in phase 01 needs path-free messages but nothing checks it there | open |
-| G10 | Major | fresh reader, zoom out | Whether a job past its queue timeout counts toward R6 is unstated | open |
-| G11 | Major | fresh reader | Summary ties the store to HTTP and leaves out the hung-page risk | open |
-| G12 | Major | zoom out | Frontmatter said `passed` while round 2 had open Majors | open |
-| G13 | Nit | codebase fit | notes.md#r27 says pypdfium2 is already in the lock; true only after task 01/1.1 | open |
-| G14 | Nit | codebase fit | The config table doesn't mark phases; no phase 02 task adds the phase 02 variables | open |
-| G15 | Nit | codebase fit | Default `dpi` and `columns` are not given | open |
-| G16 | Nit | codebase fit | R15's used-up link has no HTTP test | open |
-| G17 | Nit | codebase fit | Interface changes reach the decision log only in phase 03 | open |
-| G18 | Nit | codebase fit | `.DS_Store`/`Thumbs.db` in a browser upload refuse the job; `.dockerignore` lacks `.venv`, `.env.*` | open |
-| G19 | Nit | zoom out | Rollback's `down -v` deletes results and models | open |
-| G20 | Nit | zoom out | Alternating languages reload every job; dropping the reference may not free GPU memory | open |
-| G21 | Nit | zoom out | `ENGINE=cpu` build argument serves no stated need | open |
-| G22 | Nit | zoom out | Whether an upload running at link expiry may finish is unstated | open |
-| G23 | Nit | fresh reader | `safe_filename` undefined | open |
-| G24 | Nit | fresh reader | R14: relative path, missing parent, existing file not covered | open |
-| G25 | Nit | fresh reader | Whether a rejected start closes the link is unstated | open |
-| G26 | Nit | fresh reader | Whether R26's page-2 `RuntimeError` counts as an engine error is unclear | open |
+| G1 | Major | codebase fit, zoom out | `ALLOW_LOCAL_PATHS=true` would let the HTTP server take client paths, against AGENTS.md | fixed: Terms (Local paths), R2, notes.md#configuration, tasks 01/1.2, 02/1.1 |
+| G2 | Major | fresh reader, codebase fit, zoom out | Worker order unstated; the engine may load (and download models) for inputs that are then refused; conflicts with R4 and task 01/2.2 | fixed: D5, Terms (Step), R4, R10, D4, tasks 01/2.2, 01/2.3 |
+| G3 | Major | codebase fit, zoom out | Relative `data/` defaults over stdio create folders in the user's project; emptying `WORK_DIR` at start-up and purge can hit other processes' files | fixed: D6, D12, Terms, R20, notes.md#d7, tasks 02/2.2, 02/4.1 |
+| G4 | Major | fresh reader, codebase fit | Two uploaded images with the same name collide in the job folder | fixed: R29, D7, notes.md#d7, task 02/4.1 |
+| G5 | Major | codebase fit | Task 03/3.2: the image has no `.github/` or `README.md`, so the suite can't pass | fixed: tasks 03/1.1, 03/3.2, notes.md#d9 |
+| G6 | Major | zoom out | A hung page leaves the process alive, so `restart: unless-stopped` never recovers it | fixed: R28, D2, D9, Risks, tasks 01/2.5, 02/4.5, 03/1.2 |
+| F14 | Major | zoom out | Reopened: a file still uploading at `start_ocr_job` is silently left out; a second start on a closed `upload_id` is undefined | fixed: R29, D7, notes.md#d7, tasks 02/3.2, 02/4.1 |
+| G7 | Major | fresh reader | With local paths off over stdio, the R2 error points to upload links, which stdio doesn't have | fixed: R2, task 01/3.2 |
+| G8 | Major | fresh reader, zoom out | R13: a page range longer than the inline limit is undefined | fixed: R13, task 01/3.5 |
+| G9 | Major | fresh reader, codebase fit | The path-swapping mechanism sits only in Risks; R26 in phase 01 needs path-free messages but nothing checks it there | fixed: D11, task 01/2.4 |
+| G10 | Major | fresh reader, zoom out | Whether a job past its queue timeout counts toward R6 is unstated | fixed: R6 |
+| G11 | Major | fresh reader | Summary ties the store to HTTP and leaves out the hung-page risk | fixed: Summary |
+| G12 | Major | zoom out | Frontmatter said `passed` while round 2 had open Majors | accepted: round 2 is logged and the status reset |
+| G13 | Nit | codebase fit | notes.md#r27 says pypdfium2 is already in the lock; true only after task 01/1.1 | fixed: notes.md#r27 |
+| G14 | Nit | codebase fit | The config table doesn't mark phases; no phase 02 task adds the phase 02 variables | fixed: notes.md#configuration (Phase column), task 02/1.1 |
+| G15 | Nit | codebase fit | Default `dpi` and `columns` are not given | fixed: R3, notes.md#configuration |
+| G16 | Nit | codebase fit | R15's used-up link has no HTTP test | fixed: R15, task 02/3.2 |
+| G17 | Nit | codebase fit | Interface changes reach the decision log only in phase 03 | fixed: tasks 01/4.3, 02/5.1, 03/2.3 |
+| G18 | Nit | codebase fit | `.DS_Store`/`Thumbs.db` in a browser upload refuse the job; `.dockerignore` lacks `.venv`, `.env.*` | fixed: D7, notes.md#d7, notes.md#d9, task 03/1.2 |
+| G19 | Nit | zoom out | Rollback's `down -v` deletes results and models | fixed: Rollout & rollback |
+| G20 | Nit | zoom out | Alternating languages reload every job; dropping the reference may not free GPU memory | fixed: D3 (accepted cost), Risks, task 03/3.1 |
+| G21 | Nit | zoom out | `ENGINE=cpu` build argument serves no stated need | fixed: D9 |
+| G22 | Nit | zoom out | Whether an upload running at link expiry may finish is unstated | fixed: R15, task 02/3.2 |
+| G23 | Nit | fresh reader | `safe_filename` undefined | fixed: Terms |
+| G24 | Nit | fresh reader | R14: relative path, missing parent, existing file not covered | fixed: R14, task 01/3.5 |
+| G25 | Nit | fresh reader | Whether a rejected start closes the link is unstated | fixed: D7, notes.md#d7 |
+| G26 | Nit | fresh reader | Whether R26's page-2 `RuntimeError` counts as an engine error is unclear | fixed: D3 (any error while recognizing) |
+
+Fixes applied 2026-11-21: every Major fixed or accepted (G12). Status: passed. The design-review skill stops after round 2; nothing is open. Structure warnings: plan.md 442 body lines and phase 01 108 lines over budget, accepted as in F25.

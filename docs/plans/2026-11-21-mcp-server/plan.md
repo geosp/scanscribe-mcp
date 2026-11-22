@@ -3,7 +3,7 @@ title: A working scanscribe MCP server
 status: draft
 created: 2026-11-21
 updated: 2026-11-21
-design_review: { status: changes-requested, rounds: 2, last: 2026-11-21 }
+design_review: { status: passed, rounds: 2, last: 2026-11-21 }
 approved: null
 adr_review: null
 ---
@@ -14,15 +14,16 @@ adr_review: null
 
 scanscribe-mcp becomes an MCP server that lets an agent OCR a scanned PDF or a set of page images
 into page-marked text, through scanscribe v0.2.0's public API. An agent starts a **job**, follows
-its progress page by page, can cancel it, and fetches the text: inline up to 50,000 characters, in
-page slices, by download URL over HTTP, or into a local file over stdio. One worker thread runs one
+its progress page by page, can cancel it, and fetches the text: inline up to a limit, in page
+slices, by download URL over HTTP, or into a local file over stdio. One worker thread runs one
 job at a time from a queue, because the engine and pdfium aren't safe to run twice in one process;
 it loads the engine at the first job and again only when the language changes (D2, D3). The layout
-and security model are pandoc-mcp's (D1, D8): stdio with `input_path`, or HTTP with a bearer
-token, upload links and a document store (D6, D7). It ships in three slices: stdio, then HTTP and
-uploads, then a Docker image for an NVIDIA GPU. The main risks are hostile uploads such as zip
-bombs and oversized PDF pages (R17, R27), book material or server paths leaking into logs and
-errors (R22, R23), and an image that can't see the GPU (phase 03's manual check).
+and security model are pandoc-mcp's (D1, D8). Over stdio, jobs read `input_path` and results stay
+in memory; over HTTP, a bearer token guards the tools, files arrive through upload links, and
+results go to a document store (D6, D7). It ships in three slices: stdio, then HTTP and
+uploads, then a Docker image for an NVIDIA GPU. Main risks: hostile uploads such as zip bombs and
+huge PDF pages (R17, R27), book material or server paths in logs and errors (R22, R23), a page
+that hangs the worker (R28), and an image that can't see the GPU (phase 03's manual check).
 
 ```text
 agent ──start_ocr_job──▶ tool ──▶ OcrService ──queue──▶ worker thread ──▶ scanscribe
@@ -64,7 +65,8 @@ the GPU when the machine has one.
 - **The kit**: mcp-service-kit, the owner's library for FastMCP servers: transports, CLI, config.
 - **Job**: one OCR run over one input, with an id, a state, a step and progress.
 - **Job state**: `queued`, `running`, `succeeded`, `failed`, `cancelled` or `expired`.
-- **Step**: what a `running` job is doing: `loading engine`, `checking pages` or `recognizing`.
+- **Step**: what a `running` job is doing, in this order: `checking pages`, `loading engine`,
+  `recognizing`.
 - **Input**: what a job reads: an `upload_id`, a `document` id, or an `input_path`.
 - **Document**: a file in the document store. A job may read an uploaded PDF or zip by its id;
   result `.txt` documents are refused as input.
@@ -81,12 +83,14 @@ the GPU when the machine has one.
 - **Device**: where the engine runs, as scanscribe reports it, for example `gpu:0` or `cpu`.
 - **pdfium**: the PDF renderer scanscribe uses, through pypdfium2.
 - **Fake engine**: a test class with scanscribe's one-method `OcrEngine` shape; no PaddlePaddle.
-- **Local paths**: `input_path` and `output_path`, allowed when `SCANSCRIBE_MCP_ALLOW_LOCAL_PATHS`
-  is true; unset, it is true over stdio and false over HTTP.
+- **Local paths**: `input_path` and `output_path`. Never allowed over HTTP. Over stdio they are
+  allowed unless `SCANSCRIBE_MCP_ALLOW_LOCAL_PATHS=false`.
 - **Upload link**: a short-lived, upload-only URL from `create_upload_link`, as in pandoc-mcp.
 - **upload_id**: the non-secret handle the MCP caller gets with a link, to list what arrived.
-- **Document store**: files under `SCANSCRIBE_MCP_OUTPUT_DIR`, one folder per random id.
-- **Job folder**: `SCANSCRIBE_MCP_WORK_DIR/<job id>/`, where the worker lays out a job's pages.
+- **Document store**: HTTP only; files under `SCANSCRIBE_MCP_OUTPUT_DIR`, one folder per random id.
+- **`safe_filename`**: pandoc-mcp's helper that reduces an uploaded name to a plain file name.
+- **Job folder**: HTTP only; `SCANSCRIBE_MCP_WORK_DIR/<job id>/`, where the worker lays out a
+  job's pages.
 - **PaddleX**: the PaddleOCR layer that downloads and caches the OCR models.
 - **Book material**: PDFs, page images and OCR text of books; never in Git, fixtures or logs.
 
@@ -100,21 +104,22 @@ the GPU when the machine has one.
 ### R2 · Local paths only where allowed
 
 `input_path` and `output_path` are accepted only when local paths are allowed (Terms).
-- **Given** local paths not allowed, **when** a call passes `input_path` or `output_path`, **then** it returns a tool error that names upload links instead.
+- **Given** an HTTP server, even with `SCANSCRIBE_MCP_ALLOW_LOCAL_PATHS=true`, **when** a call passes `input_path` or `output_path`, **then** it returns a tool error that names upload links.
+- **Given** a stdio server with `SCANSCRIBE_MCP_ALLOW_LOCAL_PATHS=false`, **when** a call passes either, **then** the tool error names that setting.
 
 ### R3 · Options are checked before a job is queued
 
-`lang` must be one of `SCANSCRIBE_MCP_LANGS` (default `en`), `dpi` must be 72–400, and `columns`
-must be 1–8.
+`lang` must be one of `SCANSCRIBE_MCP_LANGS` (default `en`), `dpi` must be 72–400 (default 200),
+and `columns` must be 1–8 (default 1).
 - **Given** `lang: "xx"` with `SCANSCRIBE_MCP_LANGS=en`, **when** a job is started, **then** it returns a tool error listing the allowed languages.
 - **Given** `dpi: 600` or `columns: 9`, **when** a job is started, **then** it returns a tool error.
 
 ### R4 · A job has at most the page limit
 
-A job whose input has more than `SCANSCRIBE_MCP_MAX_PAGES` pages (default 500) never reaches the
-engine.
+A job whose input has more than `SCANSCRIBE_MCP_MAX_PAGES` pages (default 500) never loads or
+calls the engine.
 - **Given** a folder or zip of 501 images, **when** a job is started, **then** it returns a tool error.
-- **Given** a 501-page PDF, **when** the job runs, **then** it fails after the pre-check with a message naming the limit, and the engine never runs.
+- **Given** a 501-page PDF, **when** the job runs, **then** it fails after the pre-check with a message naming the limit, and the engine factory is never called.
 
 ### R5 · One job runs at a time, in order
 
@@ -123,7 +128,8 @@ Only one job may run at a time; queued jobs start in the order they were started
 
 ### R6 · The queue has a length limit
 
-At most `SCANSCRIBE_MCP_MAX_QUEUED` jobs (default 20) may be in the `queued` state at once.
+At most `SCANSCRIBE_MCP_MAX_QUEUED` jobs (default 20) may be `queued` at once, counting state after
+expiry is applied, so a job past its queue timeout no longer counts.
 - **Given** 20 queued jobs, **when** another job is started, **then** it returns a tool error and no job is created.
 - **Given** 20 jobs that were queued and then cancelled, **when** another job is started, **then** it is accepted.
 
@@ -149,7 +155,7 @@ message of a failed job.
 ### R10 · Cancelling stops a job at its next check
 
 `cancel_ocr_job` must make a queued job `cancelled` at once, and stop a running job at the next
-of these points: after the engine loads, after the pre-check, before each page.
+of these points: after the pre-check, after the engine loads, before each page.
 - **Given** a running job on page 3, **when** it is cancelled, **then** the engine sees no page after page 3 and the state becomes `cancelled`.
 - **Given** a succeeded job, **when** it is cancelled, **then** the state stays `succeeded` and the reply says so.
 
@@ -172,18 +178,21 @@ server keeps answering.
 `first_page` and `last_page` return only that range inline.
 - **Given** a 300-page result, **when** `get_ocr_result` is called with no range, **then** no text is inline and the reply gives the page count and the ways to get the text.
 - **Given** the same result, **when** it is called with pages 10 to 12, **then** exactly those three pages come back, with their `--- Page N ---` lines.
+- **Given** a range whose text exceeds the limit, **when** it is requested, **then** whole pages come back up to the limit, and the reply names the next `first_page`.
 
 ### R14 · Over stdio, a result can be written to a local file
 
-With local paths allowed, `get_ocr_result(output_path=…)` writes the whole text to that file.
-- **Given** a stdio server, **when** `output_path` is given, **then** the file holds exactly the job's text.
+With local paths allowed, `get_ocr_result(output_path=…)` writes the whole text to that file; the
+path must be absolute with an existing parent, and an existing file is replaced.
+- **Given** a stdio server, **when** an absolute `output_path` is given, **then** the file holds exactly the job's text.
+- **Given** a relative path or a missing parent folder, **when** it is given, **then** it returns a tool error and writes nothing.
 
 ### R15 · Uploads only through upload links
 
 Over HTTP, files reach the server only through an upload link: upload-only, valid for
-`SCANSCRIBE_MCP_UPLOAD_LINK_TTL_S` (default 600 s), and closed after its `max_files`.
-`max_files` defaults to 100 and is never above 200.
+`SCANSCRIBE_MCP_UPLOAD_LINK_TTL_S` (default 600 s), and closed after its `max_files` (at most 200).
 - **Given** an expired or used-up link, **when** a file is posted to it, **then** the server answers 404 and stores nothing.
+- **Given** an upload that began before the link expired, **when** it ends after expiry, **then** the file is stored.
 
 ### R16 · Upload sizes are limited
 
@@ -214,8 +223,8 @@ without a token unless `--no-auth` is passed.
 
 ### R20 · Results are stored and expire
 
-From phase 02, each result is stored with an id, and over HTTP a download URL; stored documents
-older than `SCANSCRIBE_MCP_RETENTION_DAYS` (default 7) are deleted.
+Over HTTP, each result is stored with an id and a download URL; stored documents older than
+`SCANSCRIBE_MCP_RETENTION_DAYS` (default 7) are deleted.
 - **Given** a succeeded HTTP job, **when** `get_ocr_result` is called, **then** the reply carries an id and a URL that downloads exactly the text.
 - **Given** a document older than the retention, **when** the hourly purge runs, **then** it is deleted unless a live job uses it.
 
@@ -260,6 +269,20 @@ A PDF page that would render above `SCANSCRIBE_MCP_MAX_PAGE_PIXELS` (default 100
 job's dpi must fail the job before the pre-check.
 - **Given** a PDF with a 200 × 200 inch page and `dpi: 200`, **when** the job runs, **then** it fails naming the page, and nothing is rendered.
 
+### R28 · A hung page doesn't block the server for ever
+
+A page that takes longer than `SCANSCRIBE_MCP_PAGE_TIMEOUT_S` (default 600 s) must fail its job.
+Over HTTP the process then exits, so its supervisor restarts it; over stdio new jobs are refused
+with a message asking for a restart.
+- **Given** a fake engine that blocks on page 2 past the timeout, **when** the watchdog fires, **then** the job is `failed` naming the timeout, and the server exits (HTTP) or refuses new jobs (stdio).
+
+### R29 · Uploads are complete and uniquely named before a job starts
+
+`start_ocr_job` from an `upload_id` must refuse while a file is still arriving, and refuse two
+images that reduce to the same name.
+- **Given** a link with an upload in progress, **when** a job is started from it, **then** it returns a tool error asking to wait, and the link stays open.
+- **Given** uploads `a/p1.png` and `b/p1.png`, **when** a job is started, **then** it returns a tool error naming `p1.png`.
+
 ## Decisions
 
 ### D1 · Follow pandoc-mcp's layout on kit v0.2.1
@@ -273,8 +296,9 @@ would break with the pattern the owner maintains in pandoc-mcp). Details: notes.
 ### D2 · One worker thread and a FIFO queue
 
 A single daemon thread takes jobs from a `queue.Queue`, so OCR never runs twice at once (R5) and
-never blocks the event loop. The job table, under a lock, is the truth: R6 counts its `queued`
-jobs, and the worker skips cancelled or expired entries. Each job runs inside a catch-all (R26).
+never blocks the event loop. The job table, under a lock, holds each job's state; R6 counts its
+`queued` jobs after expiry, and the worker skips cancelled or expired entries. A watchdog thread
+checks the current page's age for R28. Each job runs inside a catch-all (R26).
 Rejected: `asyncio.to_thread` per job (needs its own lock to serialize); a process pool (a second
 engine and GPU context per process).
 
@@ -282,37 +306,41 @@ engine and GPU context per process).
 
 `OcrService` takes an engine factory with `load_engine`'s signature; production passes
 `scanscribe.load_engine`, and tests a fake (R24). The worker loads at the first job, and on a
-language change drops the old engine before loading the new one (R11). After an engine error the
-engine is dropped too. The stdio subprocess test uses `tests/stdio_launcher.py`, which builds the
+language change drops the old engine before loading the new one (R11). After any error raised
+while the engine was recognizing, the engine is dropped too. Alternating languages reload for every
+job; that cost is accepted. The stdio subprocess test uses `tests/stdio_launcher.py`, which builds the
 server with the fake factory; production has no hook for it. Rejected: loading at start-up (every
 stdio session would hold GPU memory and block on a model download).
 
 ### D4 · Cancel by raising from `on_page`
 
-`cancel_ocr_job` sets a flag. The worker checks it after the engine loads and after the pre-check,
+`cancel_ocr_job` sets a flag. The worker checks it after the pre-check and after the engine loads,
 and `on_page` raises `JobCancelled` when it is set, so `ocr_source` stops before the next page
 (R10). Rejected: killing the thread (Python can't, and pdfium would be left open).
 
-### D5 · The worker opens the input and counts pages before OCR
+### D5 · The worker checks the input before it loads the engine
 
-The worker checks PDF page sizes (R27), calls `open_source`, checks `len(source)` against the page
-limit (R4), then runs `ocr_source` and `format_pages`. Folders and zips are also counted from file
+The worker's order is: PDF page sizes (R27), `open_source` with its pre-check, `len(source)`
+against the page limit (R4), the engine load (D3), then `ocr_source` and `format_pages`. A refused
+input never costs an engine load or model download. Folders and zips are also counted from file
 names at `start_ocr_job`. Rejected: `transcribe` (no hook between the pre-check and OCR).
 
 ### D6 · Results: in memory in phase 01, in the document store from phase 02
 
-Phase 01 keeps each result's pages on the job. From phase 02 every result, on both transports, is
-also saved as `ocr-<job id>.txt` in a pandoc-mcp-style `DocumentStore`, with options and page
-count, never text, in `meta.json`. Over stdio the reply leaves out the URL, which nothing serves,
-and points to slices and `output_path`. Purge runs hourly on a timer. Rejected: a database.
+Every result's pages stay on the job. Over HTTP, from phase 02, the text is also saved as
+`ocr-<job id>.txt` in a pandoc-mcp-style `DocumentStore`, with options and page count, never text,
+in `meta.json`; purge runs hourly on a timer. Over stdio nothing is written to disk except
+`output_path`. Rejected: storing stdio results (no URL serves them, and they would land in the
+user's project folder); a database.
 
 ### D7 · Uploads: images, a PDF or a zip per link
 
-A job from an `upload_id` reads that link's files: one PDF, one zip, or images used as a folder.
-More than one PDF or zip, or a mix, is refused. Starting the job snapshots the document ids of the
-files already received in full and closes the link. The worker builds the job folder, deleted when
-the job ends; `WORK_DIR` is emptied at start-up. Rejected: zip only (hard in a browser); files
-only (100 curl `-F` flags). Details: notes.md#d7
+A job from an `upload_id` reads that link's files: one PDF, one zip, or images used as a folder;
+hidden and non-image files are skipped. More than one PDF or zip, or a mix, is refused, as is a
+start while a file is arriving (R29). A job that is created snapshots the files and closes the
+link; starting again on that `upload_id` reuses the snapshot. The worker builds the job folder and
+deletes it when the job ends. Rejected: zip only (hard in a browser); files only (100 curl `-F`
+flags). Details: notes.md#d7
 
 ### D8 · Security follows pandoc-mcp's model
 
@@ -325,9 +353,9 @@ hold tokens and ids. Rejected: JWT (no identity provider here).
 
 The image is `python:3.12-slim` with `uv sync --frozen --no-dev --extra gpu`; the cu126 wheels
 bring their CUDA libraries, and the host's NVIDIA toolkit provides the driver. Compose requests the
-GPU, sets a memory limit, and mounts `documents` at `/data` and `models` at `/cache`. A build
-argument `ENGINE=cpu` exists but isn't checked. Rejected: an `nvidia/cuda` base (larger, and the
-wheels carry CUDA). Details: notes.md#d9
+GPU, sets a memory limit and a healthcheck, and mounts `documents` at `/data` and `models` at
+`/cache`. Rejected: an `nvidia/cuda` base (larger, and the wheels carry CUDA); a CPU image build
+argument (no stated need). Details: notes.md#d9
 
 ### D10 · stdout safety relies on the transport, and a test checks it
 
@@ -335,6 +363,21 @@ While serving, fastmcp's stdio transport writes the protocol to its own copy of 
 stdout and points file descriptor 1 at stderr. So anything else that writes to stdout, including
 the engine's swap of `sys.stdout`, lands on stderr. The server logs only to stderr. Task 01/4.2
 checks it end to end (R21). Rejected: our own redirection. Details: notes.md#d10
+
+### D11 · Error messages are rewritten before they leave the worker
+
+scanscribe's messages name full paths. The worker replaces the input's server path with the
+caller's own name for it (the upload's file name, or the `input_path` as given), and an unexpected
+error becomes "OCR failed (<error class>)". Logs get only the class (R22, R23, R26). Rejected:
+passing messages through (they leak `WORK_DIR`); generic messages for everything (the caller
+can't tell which page is unreadable).
+
+### D12 · `WORK_DIR` belongs to one HTTP server
+
+At start-up the HTTP server takes an exclusive lock file in `WORK_DIR`, refusing to start if
+another holds it, then deletes leftover entries named like job ids, and nothing else. Rejected:
+emptying the folder (it could delete files that aren't ours); no clean-up (crashed jobs leave up to
+2 GB each).
 
 ## Assumptions
 
@@ -356,16 +399,20 @@ checks it end to end (R21). Rejected: our own redirection. Details: notes.md#d10
 - A huge PDF page exhausts memory → R27's size check before rendering; compose's memory limit as
   the backstop for anything else.
 - A page hangs in the engine or pdfium, so the worker never finishes it → cancelling can't help;
-  R8's seconds-on-page shows it, and a restart recovers (compose `restart: unless-stopped`).
-- Book material or server paths leak through logs or errors → R22, R23: the server swaps paths in
-  scanscribe's messages for the caller's names. Logs hold only ids, counts and error classes.
+  R28's watchdog fails the job, and over HTTP exits so compose restarts it. A restart loses the
+  in-memory jobs and links (Assumptions).
+- Book material or server paths leak through logs or errors → R22, R23 and D11, with a log
+  capture test in each phase.
+- Switching languages may not free the old engine's GPU memory → phase 03's check measures it.
 
 ## Rollout & rollback
 
 Nothing is deployed yet. Each phase merges to `main` through its own pull request and leaves a
 working server. After phase 03 the owner may tag `v0.1.0`. Rollback is reverting a phase's merge.
-There is no data to migrate. After reverting phase 02, delete `data/documents` and `data/work`;
-after reverting phase 03, `docker compose down -v` removes the volumes.
+There is no data to migrate. After reverting phase 02, delete the HTTP server's `OUTPUT_DIR` and
+`WORK_DIR` (default `data/` under its working folder); after reverting phase 03, run
+`docker compose down` and remove the `documents` and `models` volumes only if their data is
+unwanted.
 
 ## Open questions
 
@@ -395,8 +442,8 @@ after reverting phase 03, `docker compose down -v` removes the volumes.
 
 | Phase | Title | Status | Tasks |
 | --- | --- | --- | --- |
-| 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26, R27) | draft | 0/15 |
-| 02 | HTTP, token, uploads and the document store (R15–R20, R22, R23) | draft | 0/14 |
+| 01 | stdio server with jobs and a fake engine (R1–R14, R21, R22, R24, R26–R28) | draft | 0/16 |
+| 02 | HTTP, token, uploads and the document store (R15–R20, R22, R23, R28, R29) | draft | 0/15 |
 | 03 | Docker on the GPU and the manual GPU check (R25) | draft | 0/8 |
 
 ## Decision log

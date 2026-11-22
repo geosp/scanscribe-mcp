@@ -28,7 +28,7 @@ uses only `load_engine`, `open_source`, `ocr_source`, `format_pages`, `PageSourc
 
 ## R27 · PDF page size check
 
-pypdfium2 is already in the lock through scanscribe; it becomes a direct dependency for this check
+pypdfium2 comes with scanscribe; task 01/1.1 also makes it a direct dependency, for this check
 only. In the worker thread, before `open_source`, open the PDF, read each page's width and height
 in points, and refuse a page where `ceil(w × dpi / 72) × ceil(h × dpi / 72)` exceeds
 `MAX_PAGE_PIXELS`, then close it. It runs only in the worker, so pdfium is still used from one
@@ -58,30 +58,32 @@ pandoc-mcp pins kit v0.1.0. Since v0.2.0 the kit refuses to start HTTP when
 All variables read by `ScanscribeMcpConfig` (pydantic-settings, prefix `SCANSCRIBE_MCP_`), next to
 the kit's `MCP_TRANSPORT`, `MCP_HOST`, `MCP_PORT` and `MCP_AUTH_ENABLED`.
 
-| Variable | Default | Used by |
-| --- | --- | --- |
-| `LANGS` | `en` | R3, R11 (comma-separated) |
-| `DEFAULT_LANG` | first of `LANGS` | `start_ocr_job` without `lang` |
-| `DEVICE` | unset (scanscribe picks GPU, else CPU) | passed to `load_engine` |
-| `MAX_PAGES` | 500 | R4 |
-| `MIN_DPI`, `MAX_DPI` | 72, 400 | R3 |
-| `MAX_COLUMNS` | 8 | R3 |
-| `MAX_PAGE_PIXELS` | 100000000 | R27 |
-| `MAX_QUEUED` | 20 | R6 |
-| `QUEUE_TIMEOUT_S` | 3600 | R7 |
-| `JOB_RETENTION_S` | 86400 | finished jobs listed |
-| `MAX_INLINE_CHARS` | 50000 | R13 |
-| `ALLOW_LOCAL_PATHS` | stdio only | R2, R14 |
-| `TOKEN` | unset | R19 |
-| `PUBLIC_BASE_URL` | `http://localhost:<MCP_PORT>` | R20; set it behind a proxy or in Docker |
-| `OUTPUT_DIR` | `data/documents` | R20 |
-| `WORK_DIR` | `data/work` | job folders for uploads and zips |
-| `RETENTION_DAYS` | 7 | R20 |
-| `MAX_FILE_BYTES` | 200 MB | R16 |
-| `MAX_UPLOAD_BYTES` | 2 GB | R16, R17 |
-| `UPLOAD_LINK_TTL_S` | 600 | R15 |
-| `UPLOAD_LINK_MAX_FILES` | 100 | R15; default `max_files`; values above 200 are rejected at start-up |
-| `UPLOAD_LINK_MAX_ACTIVE` | 100 | open links at once |
+| Variable | Default | Phase | Used by |
+| --- | --- | --- | --- |
+| `LANGS` | `en` | 01 | R3, R11 (comma-separated) |
+| `DEFAULT_LANG` | first of `LANGS` | 01 | `start_ocr_job` without `lang` |
+| `DEFAULT_DPI`, `DEFAULT_COLUMNS` | 200, 1 (scanscribe's) | 01 | R3 |
+| `DEVICE` | unset (scanscribe picks GPU, else CPU) | 01 | passed to `load_engine` |
+| `MAX_PAGES` | 500 | 01 | R4 |
+| `MIN_DPI`, `MAX_DPI` | 72, 400 | 01 | R3 |
+| `MAX_COLUMNS` | 8 | 01 | R3 |
+| `MAX_PAGE_PIXELS` | 100000000 | 01 | R27 |
+| `PAGE_TIMEOUT_S` | 600 | 01 | R28 |
+| `MAX_QUEUED` | 20 | 01 | R6 |
+| `QUEUE_TIMEOUT_S` | 3600 | 01 | R7 |
+| `JOB_RETENTION_S` | 86400 | 01 | finished jobs listed |
+| `MAX_INLINE_CHARS` | 50000 | 01 | R13 |
+| `ALLOW_LOCAL_PATHS` | true; only `false` has an effect, and only over stdio | 01 | R2, R14 |
+| `TOKEN` | unset | 02 | R19 |
+| `PUBLIC_BASE_URL` | `http://localhost:<MCP_PORT>` | 02 | R20; set it behind a proxy or in Docker |
+| `OUTPUT_DIR` | `data/documents` | 02 | R20; HTTP only |
+| `WORK_DIR` | `data/work` | 02 | job folders for uploads and zips; HTTP only (D12) |
+| `RETENTION_DAYS` | 7 | 02 | R20 |
+| `MAX_FILE_BYTES` | 200 MB | 02 | R16 |
+| `MAX_UPLOAD_BYTES` | 2 GB | 02 | R16 (all files of one link), R17 (one zip unpacked) |
+| `UPLOAD_LINK_TTL_S` | 600 | 02 | R15 |
+| `UPLOAD_LINK_MAX_FILES` | 100 | 02 | R15; default `max_files`; values above 200 are rejected at start-up |
+| `UPLOAD_LINK_MAX_ACTIVE` | 100 | 02 | open links at once |
 
 The Docker image uses port 8302, apart from pandoc-mcp's 8301 on the same host.
 
@@ -89,14 +91,18 @@ The Docker image uses port 8302, apart from pandoc-mcp's 8301 on the same host.
 
 `open_source` takes a path: a folder of images, or a file read as a PDF.
 
-At `start_ocr_job` (in the event loop, cheap): the server snapshots the document ids of the files
-the link has received in full (a file is stored only after its last byte arrives, so a partial
-file is never in the snapshot), closes the link, and checks the snapshot's kind and, for images,
-its count. The job keeps the ids; documents live for `RETENTION_DAYS`, far longer than the queue
+At `start_ocr_job` (in the event loop, cheap): the server refuses while the grant counts an
+upload in progress (R29). It lists the link's stored files, skips hidden names and files that are
+neither PDF, zip nor image (`.DS_Store`, `Thumbs.db`), and checks the kind, the count and, for
+images, that no two reduce to the same name. Any refusal leaves the link open. Once the job is
+created, it snapshots the document ids, closes the link, and replies with the count and names
+taken; a second start on the same `upload_id` reuses that snapshot. The job keeps the ids; documents live for `RETENTION_DAYS`, far longer than the queue
 timeout, and purge skips documents a live job uses.
 
 In the worker, when the job starts: it builds `WORK_DIR/<job id>/` and deletes it when the job
-ends in any state. `WORK_DIR` is emptied at start-up, because no job survives a restart.
+ends in any state. At start-up the HTTP server takes an exclusive lock file in `WORK_DIR` (a
+second server on the same folder refuses to start) and deletes leftover entries whose names match
+the job-id pattern, because no job survives a restart (D12).
 
 | Upload contents | Job input |
 | --- | --- |
@@ -124,13 +130,16 @@ Pages then follow scanscribe's natural order, because the folder goes through `o
 
 - `python:3.12-slim`, `git` for the Git dependencies, uv copied from `ghcr.io/astral-sh/uv` at
   CI's version.
-- `uv sync --frozen --no-dev --extra ${ENGINE}` with `ENGINE=gpu` by default.
+- Copies only `pyproject.toml`, `uv.lock`, `README.md` (pyproject's `readme`) and `src/`, then
+  `uv sync --frozen --no-dev --extra gpu`.
 - `PADDLE_PDX_CACHE_HOME=/cache/paddlex` on the named volume `models` at `/cache`; the named
   volume `documents` at `/data`, with `SCANSCRIBE_MCP_OUTPUT_DIR=/data/documents` and
   `SCANSCRIBE_MCP_WORK_DIR=/data/work` set in the image, so uploads and job folders share one
   filesystem and hard links work. Both owned by an unprivileged user (uid 1000).
 - `PATH=/app/.venv/bin:$PATH`, `MCP_PORT=8302`; compose sets `SCANSCRIBE_MCP_PUBLIC_BASE_URL`,
-  a memory limit (`mem_limit`, default 16g) and `restart: unless-stopped`.
+  a memory limit (`mem_limit`, default 16g), `restart: unless-stopped`, and a healthcheck on the
+  HTTP port; R28's watchdog exits the process on a hung page, so the restart policy recovers it.
+- `.dockerignore` keeps `in/`, `out/`, `data/`, `.env`, `.env.*`, `.venv` and `.git` out.
 - Compose asks for the GPU with `deploy.resources.reservations.devices: [{driver: nvidia, count:
   1, capabilities: [gpu]}]`.
 - If the slim image lacks a library the wheels need (seen as an `ImportError` or a CPU fallback on
